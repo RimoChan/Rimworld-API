@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ModMetaData>
+  <name>ARROM</name>
+  <description>ARROM is a mod that give you an API useable for your current game</description>
+  <packageId>MasterPNJ.ARROM</packageId>
+  <author>MasterPNJ</author>
+  <url></url>
+  <supportedVersions>
+    <li>1.5</li>
+    <li>1.6</li>
+  </supportedVersions>
+</ModMetaData>
