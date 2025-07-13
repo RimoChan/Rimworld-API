@@ -1,0 +1,4 @@
+<LanguageData>
+  <ARROM.ServerPortLabel>Порт REST сервера (требуется перезапуск):</ARROM.ServerPortLabel>
+  <ARROM.RefreshIntervalLabel>Интервал обновления (тиков):</ARROM.RefreshIntervalLabel>
+</LanguageData>

@@ -19,7 +19,7 @@ namespace ARROM
     {
         private static HttpListener _listener;
         private static int Port => ARROM_Mod.Settings?.serverPort ?? 8765;
-        private static readonly string Prefix = $"http://localhost:{Port}/";
+        private static readonly string Prefix = $"http://+:{Port}/";
         private static Thread _thread;
 
         // Cached JSON responses refreshed on game load
@@ -251,14 +251,14 @@ namespace ARROM
                     gender = p.gender.ToString(),
                     // position tile
                     position = new { x = p.Position.x, y = p.Position.z },
-                    // humeur et santÃ©
+                    // humeur et santé
                     mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
                     health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
                     // job en cours
                     currentJob = p.CurJob?.def?.defName ?? "",
                     // traits
                     traits = p.story?.traits?.allTraits.Select(t => t.def.defName).ToList() ?? new List<string>(),
-                    // prioritÃ©s de travail (uniquement celles > 0)
+                    // priorités de travail (uniquement celles > 0)
                     workPriorities = DefDatabase<WorkTypeDef>.AllDefs
                         .Select(wt => new { workType = wt.defName, priority = p.workSettings.GetPriority(wt) })
                         .Where(x => x.priority > 0)
@@ -304,7 +304,7 @@ namespace ARROM
                 bleedingRate = p.health?.hediffSet?.BleedRateTotal ?? 0f,
                 isDowned = p.Downed,
                 isDrafted = p.Drafted,
-                // **ici on passe par la propriÃ©tÃ© Pawn.CurJob, et non jobs.CurJob**
+                // **ici on passe par la propriété Pawn.CurJob, et non jobs.CurJob**
                 currentJob = p.CurJob?.def?.defName ?? "",
                 thoughts = p.needs?.mood?.thoughts?.memories?.Memories
                     .Select(t => t.def.defName)
@@ -348,7 +348,15 @@ namespace ARROM
 
         private static string GetFactions()
         {
-            var factions = Find.FactionManager?.AllFactionsListForReading
+            // When no game is loaded (e.g. the main menu) Find.FactionManager is
+            // null which would cause a NullReferenceException. Return an empty
+            // list in that case.
+            if (Current.ProgramState != ProgramState.Playing || Find.FactionManager == null)
+            {
+                return "[]";
+            }
+
+            var factions = Find.FactionManager.AllFactionsListForReading
                 .Where(f => !f.IsPlayer)
                 .Select(f => new
                 {
@@ -370,11 +378,29 @@ namespace ARROM
 
         private static string GetResearch()
         {
+            // When no game is loaded (e.g. the main menu), Current.Game is null.
+            if (Current.ProgramState != ProgramState.Playing || Current.Game == null)
+            {
+                var empty = new
+                {
+                    currentProject = string.Empty,
+                    progress = 0f,
+                    finishedProjects = new List<string>()
+                };
+
+                return JsonConvert.SerializeObject(empty, new JsonSerializerSettings
+                {
+                    Converters = new List<JsonConverter>(),
+                    Formatting = Newtonsoft.Json.Formatting.Indented
+                });
+            }
+
             var manager = Find.ResearchManager;
             ResearchProjectDef current = null;
+
             if (manager != null)
             {
-                // RÃ©cupÃ¨re le champ privÃ© 'currentProj'
+                // Récupère le champ privé 'currentProj'
                 var fld = typeof(ResearchManager)
                     .GetField("currentProj", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (fld != null)
@@ -531,8 +557,23 @@ namespace ARROM
 
         private static string GetAlerts()
         {
+            // When no game is loaded (example on the main menu) Find.Alerts throws
+            // an InvalidCastException. Simply return an empty list in that case
+            // instead of logging an error.
+            if (Current.ProgramState != ProgramState.Playing)
+                return "[]";
+
             var alertsField = typeof(AlertsReadout).GetField("activeAlerts", BindingFlags.Instance | BindingFlags.NonPublic);
-            var active = alertsField?.GetValue(Find.Alerts) as IEnumerable<Alert>;
+
+            IEnumerable<Alert> active = null;
+            try
+            {
+                active = alertsField?.GetValue(Find.Alerts) as IEnumerable<Alert>;
+            }
+            catch
+            {
+                return "[]";
+            }
 
             List<object> list;
             if (active == null)

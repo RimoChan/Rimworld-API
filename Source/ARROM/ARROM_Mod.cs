@@ -19,11 +19,11 @@ namespace ARROM
             Listing_Standard list = new Listing_Standard();
             list.Begin(inRect);
 
-            list.Label("Port du serveur REST (redémarrage requis) :");
+            list.Label("ARROM.ServerPortLabel".Translate());
             string bufferPort = Settings.serverPort.ToString();
             list.TextFieldNumeric(ref Settings.serverPort, ref bufferPort, 1, 65535);
 
-            list.Label("Intervalle de rafraîchissement (ticks) :");
+            list.Label("ARROM.RefreshIntervalLabel".Translate());
             string bufferRefresh = Settings.refreshIntervalTicks.ToString();
             list.TextFieldNumeric(ref Settings.refreshIntervalTicks, ref bufferRefresh, 1);
 
