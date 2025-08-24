@@ -1,10 +1,11 @@
 using Verse;
+using System.Threading;
 
 namespace ARROM
 {
     public class ARROM_GameComponent : GameComponent
     {
-        private int tickCounter = 0;
+        private int tickCounter = ARROM_Mod.Settings.refreshIntervalTicks - 1;
 
         public ARROM_GameComponent(Game _) : base()
         {
@@ -15,7 +16,6 @@ namespace ARROM
         {
             base.FinalizeInit();
             Server.Start();
-            Server.RefreshCache();
         }
 
         public override void GameComponentTick()
