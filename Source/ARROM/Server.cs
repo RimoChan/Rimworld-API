@@ -36,6 +36,26 @@ namespace ARROM
             return q;
         }
 
+        public object PawnToObject(Pawn p) {
+            return new {
+                id = p.thingIDNumber,
+                name = p.Name.ToStringShort,
+                age = p.ageTracker.AgeBiologicalYears,
+                gender = p.gender.ToString(),
+                position = new { x = p.Position.x, y = p.Position.z },
+                mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
+                health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
+                hediff = p.health?.hediffSet?.hediffs?.Select(x => new { part = x.Part?.Label, label = x.Label }).ToList(),
+                currentJob = p.CurJob?.def?.defName ?? "",
+                traits = p.story?.traits?.allTraits.Select(t => t.def.defName).ToList() ?? new List<string>(),
+                workPriorities = DefDatabase<WorkTypeDef>.AllDefs
+                    .Select(wt => new { workType = wt.defName, priority = p.workSettings.GetPriority(wt) })
+                    .Where(x => x.priority > 0)
+                    .OrderBy(x => x.priority)
+                    .ToList()
+            };
+        }
+
         private List<Designator> allDesignatorsCache;
 
         public List<Designator> GetAllDesignators() {
@@ -50,7 +70,6 @@ namespace ARROM
             return allDesignatorsCache;
         }
 
-        // http://localhost:8765/input_blueprint?x=11&y=11&thing=Wall&stuff=WoodLog
         public void input_blueprint(int x, int y, string thing, string stuff, string rotation) {
             ThingDef thingToBuild = DefDatabase<ThingDef>.GetNamed(thing);
             ThingDef stuffToUse = null;
@@ -63,6 +82,42 @@ namespace ARROM
             }
             GenConstruct.PlaceBlueprintForBuild(thingToBuild, desiredPosition, Find.CurrentMap, Rot4.FromString(rotation), playerFaction, stuff: stuffToUse);
         }
+
+        public void input_surgery(int id, string recipe, string body_part) {
+            Pawn p = get_pawn(id);
+            // RecipeDefOf
+            RecipeDef r = DefDatabase<RecipeDef>.GetNamed(recipe);
+
+            BodyPartRecord bodyPart = p.health.hediffSet.GetNotMissingParts().FirstOrDefault(part => part.Label == body_part);
+            if (bodyPart == null) {
+                string hint = String.Join(", ", p.health.hediffSet.GetNotMissingParts().Select(part => part.Label));
+                throw new Exception($"Available are {hint}");
+            }
+
+            Bill_Medical newBill = new Bill_Medical(r, null);
+            newBill.Part = bodyPart;
+            p.health.surgeryBills.AddBill(newBill);
+        }
+
+        public string input_create_zone(string label, int x, int y) {
+            Map map = Find.CurrentMap;
+            Zone_Stockpile zone = new Zone_Stockpile(0, map.zoneManager);
+            zone.label = label;
+            zone.AddCell(new IntVec3(x, 0, y));
+            map.zoneManager.RegisterZone(zone);
+            return $"\"{zone.ID}\"";
+        }
+
+        public void input_zone_add_cell(int zone_id, int x, int y) {
+            Map map = Find.CurrentMap;
+            Zone zone = map.zoneManager.AllZones.FirstOrDefault(z => z.ID == zone_id);
+            if (zone == null) 
+                throw new Exception("zone not found.");
+            zone.AddCell(new IntVec3(x, 0, y));
+        }
+
+        // public void input_zone_setting(int zone_id, int x, int y) {
+        // }
 
         public void input_command(int id, string label, int target_id)
         {
@@ -144,6 +199,26 @@ namespace ARROM
                     Formatting = Newtonsoft.Json.Formatting.Indented,
                 }
             );
+        }
+
+        public string zones() {
+            Map map = Find.CurrentMap;
+            var zs = map.zoneManager.AllZones.Select(z => new {id = z.ID, label = z.label});
+            return JsonConvert.SerializeObject(zs, new JsonSerializerSettings
+            {
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                Formatting = Newtonsoft.Json.Formatting.Indented
+            });
+        }
+
+        public string prisoners()
+        {
+            var ps = Find.CurrentMap?.mapPawns?.PrisonersOfColony.Select(PawnToObject).ToList();
+            return JsonConvert.SerializeObject(ps, new JsonSerializerSettings
+            {
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                Formatting = Newtonsoft.Json.Formatting.Indented
+            });
         }
 
         public string animals()
@@ -283,15 +358,19 @@ namespace ARROM
             }
 
             var factions = Find.FactionManager.AllFactionsListForReading
-                .Where(f => !f.IsPlayer)
                 .Select(f => new
                 {
                     name = f.Name,
                     def = f.def?.defName,
-                    relation = Find.FactionManager?.OfPlayer != null
-                        ? Find.FactionManager.OfPlayer.RelationKindWith(f).ToString()
-                        : string.Empty,
-                    goodwill = Find.FactionManager?.OfPlayer?.GoodwillWith(f) ?? 0
+                    is_player = f.IsPlayer,
+                    relation = f.IsPlayer ? string.Empty : 
+                        (
+                            Find.FactionManager?.OfPlayer != null
+                            ? Find.FactionManager.OfPlayer.RelationKindWith(f).ToString()
+                            : string.Empty
+                        ),
+                    goodwill = f.IsPlayer ? 0 : 
+                        (Find.FactionManager?.OfPlayer?.GoodwillWith(f) ?? 0),
                 })
                 .ToList();
 
@@ -416,12 +495,9 @@ namespace ARROM
                 temperature = map.mapTemperature?.OutdoorTemp ?? 0f,
                 hour = GenLocalDate.HourOfDay(map),
                 size = new { x = map.Size.x, y = map.Size.z },
-                season = GenLocalDate.Season(map).ToString()    // <-- use GenLocalDate
+                season = GenLocalDate.Season(map).ToString(),
+                total_ticks = Find.TickManager.TicksGame,
             };
-            
-            // for (int x = 0; x < map.Size.x; x++)
-            // {
-            //     for (int y = 0; y < map.Size.z; y++)
 
             return JsonConvert.SerializeObject(info, new JsonSerializerSettings
             {
@@ -730,33 +806,10 @@ namespace ARROM
             });
         }
 
+
         private static string GetColonists()
         {
-            var colonists = Find.CurrentMap?.mapPawns?.FreeColonists
-                .Select(p => new
-                {
-                    id = p.thingIDNumber,
-                    name = p.Name.ToStringShort,
-                    age = p.ageTracker.AgeBiologicalYears,
-                    gender = p.gender.ToString(),
-                    // position tile
-                    position = new { x = p.Position.x, y = p.Position.z },
-                    // humeur et sant�
-                    mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
-                    health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
-                    // job en cours
-                    currentJob = p.CurJob?.def?.defName ?? "",
-                    // traits
-                    traits = p.story?.traits?.allTraits.Select(t => t.def.defName).ToList() ?? new List<string>(),
-                    // priorit�s de travail (uniquement celles > 0)
-                    workPriorities = DefDatabase<WorkTypeDef>.AllDefs
-                        .Select(wt => new { workType = wt.defName, priority = p.workSettings.GetPriority(wt) })
-                        .Where(x => x.priority > 0)
-                        .OrderBy(x => x.priority)
-                        .ToList()
-                })
-                .ToList();
-
+            var colonists = Find.CurrentMap?.mapPawns?.FreeColonists.Select(_apiHandler.PawnToObject).ToList();
             return JsonConvert.SerializeObject(colonists, new JsonSerializerSettings
             {
                 ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
