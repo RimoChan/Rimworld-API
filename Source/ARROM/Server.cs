@@ -11,10 +11,8 @@ using RimWorld;
 using Verse;
 using Verse.AI;
 
-namespace ARROM
-{
-    public class ApiHandler
-    {
+namespace ARROM {
+    public class ApiHandler {
         public static readonly object TickSyncLock = new object();
 
         public Pawn get_pawn(int id) {
@@ -61,11 +59,40 @@ namespace ARROM
             };
         }
 
+    public object PawnToDetailedObject(Pawn p) {
+        return new {
+            id = p.thingIDNumber,
+            commands = p.GetGizmos().Select(m => new { type = m.GetType().FullName, label = (m as Command)?.Label }),
+            name = p.Name.ToStringFull,
+            backstory = p.story?.Title ?? "",
+            gender = p.gender.ToString(),
+            age = p.ageTracker?.AgeBiologicalYears ?? -1,
+            lifeStage = p.ageTracker?.CurLifeStage?.defName ?? "",
+            mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
+            comfort = p.GetStatValue(StatDefOf.Comfort, true),
+            needs = p.needs?.AllNeeds.Select(n => new { need = n.def.defName, level = n.CurLevelPercentage * 100 }).ToList(),
+            health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
+            hediffs = p.health?.hediffSet?.hediffs.Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
+            visibleHediffs = p.health?.hediffSet?.hediffs.Where(h => h.Visible).Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
+            bleedingRate = p.health?.hediffSet?.BleedRateTotal ?? 0f,
+            isDowned = p.Downed,
+            isDrafted = p.Drafted,
+            currentJob = p.CurJob?.def?.defName ?? "",
+            thoughts = p.needs?.mood?.thoughts?.memories?.Memories.Select(t => t.def.defName).ToList(),
+            skills = p.skills?.skills.Select(s => new { skill = s.def.defName, level = s.Level, passion = s.passion.ToString() }).ToList(),
+            equipment = p.equipment?.AllEquipmentListForReading.Select(eq => new { def = eq.def.defName, hitPoints = eq.HitPoints }).ToList(),
+            apparel = p.apparel?.WornApparel.Select(a => new { def = a.def.defName, hitPoints = a.HitPoints }).ToList(),
+            inventory = p.inventory?.innerContainer.Select(i => new { def = i.def.defName, count = i.stackCount }).ToList(),
+            assignedArea = p.playerSettings?.AreaRestrictionInPawnCurrentMap?.Label,
+            ownedRoom = p.ownership?.OwnedRoom?.ID ?? 0,
+            relations = p.relations?.DirectRelations.Select(r => new { def = r.def.defName, other = r.otherPawn?.thingIDNumber }).ToList()
+        };
+    }
+
         private List<Designator> allDesignatorsCache;
 
         public List<Designator> GetAllDesignators() {
-            if (allDesignatorsCache == null)
-            {
+            if (allDesignatorsCache == null) {
                 allDesignatorsCache = new List<Designator>();
                 foreach (DesignationCategoryDef categoryDef in DefDatabase<DesignationCategoryDef>.AllDefs)
                     allDesignatorsCache.AddRange(categoryDef.ResolvedAllowedDesignators);
@@ -76,8 +103,7 @@ namespace ARROM
         private static Dictionary<string, int> CountThings(SlotGroup group) {
             var dict = new Dictionary<string, int>();
             if (group == null) return dict;
-            foreach (var thing in group.HeldThings)
-            {
+            foreach (var thing in group.HeldThings) {
                 string def = thing.def?.defName;
                 if (string.IsNullOrEmpty(def)) continue;
                 dict[def] = dict.ContainsKey(def) ? dict[def] + thing.stackCount : thing.stackCount;
@@ -159,14 +185,12 @@ namespace ARROM
             Messages.Message(text, MessageTypeDefOf.NeutralEvent, true);
         }
 
-        public void input_command(int id, string label, int target_id)
-        {
+        public void input_command(int id, string label, int target_id) {
             Pawn p = get_pawn(id);
             Thing target_p = null;
             if (target_id != 0)
                 target_p = get_thing(target_id);
-            foreach (Gizmo g in p.GetGizmos())
-            {
+            foreach (Gizmo g in p.GetGizmos()) {
                 if ((g as Command)?.Label != label && g.GetType().FullName != label)    // 开火命令没有label，只能这样代替1下了
                     continue;
                 if (g is Command_Toggle g1) {
@@ -195,11 +219,11 @@ namespace ARROM
             throw new Exception("command not found.");
         }
 
-        public void input_set_forbidden(int id, bool value){
+        public void input_set_forbidden(int id, bool value) {
             get_thing(id).SetForbidden(value);
         }
 
-        public void input_add_designation(int id, string type){
+        public void input_add_designation(int id, string type) {
             Thing target = get_thing(id);
             DesignationManager g = Find.CurrentMap.designationManager;
             Designator dr = GetAllDesignators().FirstOrDefault(d => d.GetType().Name == type);
@@ -255,10 +279,8 @@ namespace ARROM
             });
         }
 
-        public object things()
-        {
-            var result = Find.CurrentMap.listerThings.AllThings.Select(p => new
-                {
+        public object things() {
+            var result = Find.CurrentMap.listerThings.AllThings.Select(p => new {
                     id = p.thingIDNumber,
                     type = p.GetType().FullName,
                     def = p.def?.defName,
@@ -273,14 +295,12 @@ namespace ARROM
             return Find.CurrentMap.zoneManager.AllZones.Select(z => new { id = z.ID, label = z.label });
         }
 
-        public object prisoners()
-        {
+        public object prisoners() {
             var ps = Find.CurrentMap?.mapPawns?.PrisonersOfColony.Select(PawnToObject).ToList();
             return ps;
         }
 
-        public object colony()
-        {
+        public object colony() {
             Map map = Find.CurrentMap;
             return new {
                 colonyName = map?.info?.parent?.LabelCap ?? "Unnamed",
@@ -295,44 +315,20 @@ namespace ARROM
             arrivalTime = l.arrivalTime
         }).ToList();
 
-        public object colonists() => Find.CurrentMap?.mapPawns?.FreeColonists.Select(PawnToObject).ToList() ?? new List<object>();
-
-        public object colonist(int id)
-        {
-            Pawn p = Find.CurrentMap?.mapPawns?.FreeColonists.FirstOrDefault(x => x.thingIDNumber == id);
-            if (p == null) return new { };
-
-            return new {
-                id,
-                commands = p.GetGizmos().Select(m => new { type = m.GetType().FullName, label = (m as Command)?.Label }),
-                name = p.Name.ToStringFull,
-                backstory = p.story?.Title ?? "",
-                gender = p.gender.ToString(),
-                age = p.ageTracker?.AgeBiologicalYears ?? -1,
-                lifeStage = p.ageTracker?.CurLifeStage?.defName ?? "",
-                mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
-                comfort = p.GetStatValue(StatDefOf.Comfort, true),
-                needs = p.needs?.AllNeeds.Select(n => new { need = n.def.defName, level = n.CurLevelPercentage * 100 }).ToList(),
-                health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
-                hediffs = p.health?.hediffSet?.hediffs.Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
-                visibleHediffs = p.health?.hediffSet?.hediffs.Where(h => h.Visible).Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
-                bleedingRate = p.health?.hediffSet?.BleedRateTotal ?? 0f,
-                isDowned = p.Downed,
-                isDrafted = p.Drafted,
-                currentJob = p.CurJob?.def?.defName ?? "",
-                thoughts = p.needs?.mood?.thoughts?.memories?.Memories.Select(t => t.def.defName).ToList(),
-                skills = p.skills?.skills.Select(s => new { skill = s.def.defName, level = s.Level, passion = s.passion.ToString() }).ToList(),
-                equipment = p.equipment?.AllEquipmentListForReading.Select(eq => new { def = eq.def.defName, hitPoints = eq.HitPoints }).ToList(),
-                apparel = p.apparel?.WornApparel.Select(a => new { def = a.def.defName, hitPoints = a.HitPoints }).ToList(),
-                inventory = p.inventory?.innerContainer.Select(i => new { def = i.def.defName, count = i.stackCount }).ToList(),
-                assignedArea = p.playerSettings?.AreaRestrictionInPawnCurrentMap?.Label,
-                ownedRoom = p.ownership?.OwnedRoom?.ID ?? 0,
-                relations = p.relations?.DirectRelations.Select(r => new { def = r.def.defName, other = r.otherPawn?.thingIDNumber }).ToList()
-            };
+        public object colonists(bool detail = false) {
+            var pawns = Find.CurrentMap?.mapPawns?.FreeColonists;
+            if (pawns == null) return new List<object>();
+            return detail 
+                ? pawns.Select(PawnToDetailedObject).ToList() 
+                : pawns.Select(PawnToObject).ToList();
         }
 
-        public object map_tiles()
-        {
+        public object colonist(int id) {
+            Pawn p = get_pawn(id);
+            return PawnToDetailedObject(p);
+        }
+
+        public object map_tiles() {
             var map = Find.CurrentMap;
             var tiles = new List<object>();
             if (map != null)
@@ -342,8 +338,7 @@ namespace ARROM
             return tiles;
         }
 
-        public object map_tile(int x, int y)
-        {
+        public object map_tile(int x, int y) {
             Map map = Find.CurrentMap;
             IntVec3 cell = new IntVec3(x, 0, y);
             if (map == null || !cell.InBounds(map)) return new { };
@@ -355,12 +350,10 @@ namespace ARROM
         }
 
 
-        public object animals()
-        {
+        public object animals() {
             var animals = Find
                 .CurrentMap?.mapPawns?.AllPawns.Where(p => p.RaceProps?.Animal == true)
-                .Select(p => new
-                {
+                .Select(p => new {
                     id = p.thingIDNumber,
                     name = p.LabelShortCap,
                     def = p.def?.defName,
@@ -372,8 +365,7 @@ namespace ARROM
                         .FirstOrDefault(),
                     trainings = DefDatabase<TrainableDef>.AllDefsListForReading.ToDictionary(
                         td => td.defName,
-                        td =>
-                        {
+                        td => {
                             if (p.training == null)
                                 return 0;
                             var mi = typeof(Pawn_TrainingTracker).GetMethod(
@@ -390,8 +382,7 @@ namespace ARROM
             return animals;
         }
 
-        public object storage_detail()
-        {
+        public object storage_detail() {
             var storages = new List<object>();
             foreach (var zone in Find.CurrentMap.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>())
                 storages.Add(new { name = zone.label, items = zone?.slotGroup.HeldThings.Select(t => new { id = t.thingIDNumber, def = t.def?.defName, stack_count = t.stackCount }) });
@@ -400,8 +391,7 @@ namespace ARROM
             return storages;
         }
 
-        public object storage()
-        {
+        public object storage() {
             var storages = new List<object>();
             foreach (var zone in Find.CurrentMap.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>())
                 storages.Add(new { name = zone.label, items = CountThings(zone?.slotGroup) });
@@ -412,8 +402,7 @@ namespace ARROM
 
         public object mods() => LoadedModManager.RunningModsListForReading.Select(m => new { name = m.Name, packageId = m.PackageId });
 
-        public object factions()
-        {
+        public object factions() {
             if (Current.ProgramState != ProgramState.Playing || Find.FactionManager == null) return new List<object>();
             return Find.FactionManager.AllFactionsListForReading.Select(f => new {
                 name = f.Name, def = f.def?.defName, is_player = f.IsPlayer,
@@ -422,8 +411,7 @@ namespace ARROM
             }).ToList();
         }
 
-        public object research()
-        {
+        public object research() {
             if (Current.ProgramState != ProgramState.Playing || Current.Game == null)
                 return new { currentProject = string.Empty, progress = 0f, finishedProjects = new List<string>() };
 
@@ -437,12 +425,17 @@ namespace ARROM
         }
 
         public object buildings() => Find.CurrentMap.listerThings.AllThings.Where(t => t.def.building != null).Select(b => new {
-            id = b.thingIDNumber, type = b.GetType().FullName, def = b.def?.defName, position = new { x = b.Position.x, y = b.Position.z },
-            is_forbidden = b.IsForbidden(Faction.OfPlayer), faction = b.Faction?.ToString()
+            id = b.thingIDNumber,
+            type = b.GetType().FullName,
+            def = b.def?.defName,
+            material = b.Stuff?.defName, // 新增：建筑的材料 (例如: "WoodLog", "Steel")。如果建筑没有自选材料则为 null
+            position = new { x = b.Position.x, y = b.Position.z },
+            rotation = b.Rotation.AsInt, // 新增：建筑的朝向 (0: 北, 1: 东, 2: 南, 3: 西)
+            is_forbidden = b.IsForbidden(Faction.OfPlayer),
+            faction = b.Faction?.ToString()
         }).ToList();
 
-        public object map()
-        {
+        public object map() {
             Map map = Find.CurrentMap;
             if (map == null) return new { };
             return new {
@@ -455,8 +448,7 @@ namespace ARROM
             };
         }
 
-        public object alerts()
-        {
+        public object alerts() {
             if (Current.ProgramState != ProgramState.Playing) return new List<object>();
             try
             {
@@ -478,8 +470,7 @@ namespace ARROM
             return DefDatabase<RecipeDef>.AllDefs.Select(i => i.defName).ToList();
         }
 
-        public string Ping()
-        {
+        public string Ping() {
             return "Pong!";
         }
         #endregion
@@ -494,8 +485,7 @@ namespace ARROM
         public static readonly ConcurrentQueue<HttpListenerContext> MainThreadRequestQueue = new ConcurrentQueue<HttpListenerContext>();
 
 
-        public static void Start()
-        {
+        public static void Start() {
             if (_listener != null) return;
 
             _listener = new HttpListener();
@@ -507,24 +497,20 @@ namespace ARROM
             //Log.Message($"[ARROM] REST API listening on {Prefix}");
         }
 
-        public static void Stop()
-        {
+        public static void Stop() {
             _listener?.Close();
             _listener = null;
             _thread = null;
         }
 
-        private static async void Loop()
-        {
-            while (_listener != null && _listener.IsListening)
-            {
+        private static async void Loop() {
+            while (_listener != null && _listener.IsListening) {
                 try
                 {
                     var ctx = await _listener.GetContextAsync();
                     假Handle(ctx);
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     Log.Error($"[ARROM] HttpListener error: {ex}");
                 }
             }
@@ -534,8 +520,7 @@ namespace ARROM
             MainThreadRequestQueue.Enqueue(ctx);
         }
 
-        public static void Handle(HttpListenerContext ctx)
-        {
+        public static void Handle(HttpListenerContext ctx) {
             try
             {
                 Monitor.Enter(ApiHandler.TickSyncLock);
@@ -544,29 +529,23 @@ namespace ARROM
                 string json;
 
                 var argsDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (string key in ctx.Request.QueryString.AllKeys)
-                {
+                foreach (string key in ctx.Request.QueryString.AllKeys) {
                     if (key != null) argsDict[key] = ctx.Request.QueryString[key];
                 }
                 MethodInfo method = _apiHandler.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                if (method == null)
-                {
+                if (method == null) {
                     ctx.Response.StatusCode = 404;
                     json = $"\"Method {methodName} not found.\"";
                 }
-                else
-                {
+                else {
                     var methodParams = method.GetParameters();
                     var args = new object[methodParams.Length];
-                    for (int i = 0; i < methodParams.Length; i++)
-                    {
+                    for (int i = 0; i < methodParams.Length; i++) {
                         var param = methodParams[i];
-                        if (argsDict.TryGetValue(param.Name, out string paramValueStr))
-                        {
+                        if (argsDict.TryGetValue(param.Name, out string paramValueStr)) {
                             args[i] = Convert.ChangeType(paramValueStr, param.ParameterType);
                         }
-                        else
-                        {
+                        else {
                             if (!param.IsOptional) { ctx.Response.StatusCode = 400; throw new Exception($"Missing required parameter: {param.Name}"); }
                             args[i] = param.DefaultValue;
                         }
@@ -590,8 +569,7 @@ namespace ARROM
                 ctx.Response.ContentLength64 = data.Length;
                 ctx.Response.OutputStream.Write(data, 0, data.Length);
             }
-            catch (Exception ex)
-            {
+            catch (Exception ex) {
                 string msg = $"【error】: {ex.Message}\n【exceptionType】: {ex.GetType().Name}\n【stackTrace】: {ex.ToString()}";
                 byte[] data = Encoding.UTF8.GetBytes(msg);
                 ctx.Response.StatusCode = 500;
