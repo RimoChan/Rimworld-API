@@ -59,35 +59,48 @@ namespace ARROM {
             };
         }
 
-    public object PawnToDetailedObject(Pawn p) {
-        return new {
-            id = p.thingIDNumber,
-            commands = p.GetGizmos().Select(m => new { type = m.GetType().FullName, label = (m as Command)?.Label }),
-            name = p.Name.ToStringFull,
-            backstory = p.story?.Title ?? "",
-            gender = p.gender.ToString(),
-            age = p.ageTracker?.AgeBiologicalYears ?? -1,
-            lifeStage = p.ageTracker?.CurLifeStage?.defName ?? "",
-            mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
-            comfort = p.GetStatValue(StatDefOf.Comfort, true),
-            needs = p.needs?.AllNeeds.Select(n => new { need = n.def.defName, level = n.CurLevelPercentage * 100 }).ToList(),
-            health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
-            hediffs = p.health?.hediffSet?.hediffs.Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
-            visibleHediffs = p.health?.hediffSet?.hediffs.Where(h => h.Visible).Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
-            bleedingRate = p.health?.hediffSet?.BleedRateTotal ?? 0f,
-            isDowned = p.Downed,
-            isDrafted = p.Drafted,
-            currentJob = p.CurJob?.def?.defName ?? "",
-            thoughts = p.needs?.mood?.thoughts?.memories?.Memories.Select(t => t.def.defName).ToList(),
-            skills = p.skills?.skills.Select(s => new { skill = s.def.defName, level = s.Level, passion = s.passion.ToString() }).ToList(),
-            equipment = p.equipment?.AllEquipmentListForReading.Select(eq => new { def = eq.def.defName, hitPoints = eq.HitPoints }).ToList(),
-            apparel = p.apparel?.WornApparel.Select(a => new { def = a.def.defName, hitPoints = a.HitPoints }).ToList(),
-            inventory = p.inventory?.innerContainer.Select(i => new { def = i.def.defName, count = i.stackCount }).ToList(),
-            assignedArea = p.playerSettings?.AreaRestrictionInPawnCurrentMap?.Label,
-            ownedRoom = p.ownership?.OwnedRoom?.ID ?? 0,
-            relations = p.relations?.DirectRelations.Select(r => new { def = r.def.defName, other = r.otherPawn?.thingIDNumber }).ToList()
-        };
-    }
+        public object PawnToDetailedObject(Pawn p) {
+            return new {
+                id = p.thingIDNumber,
+                commands = p.GetGizmos().Select(m => new { type = m.GetType().FullName, label = (m as Command)?.Label }),
+                name = p.Name.ToStringFull,
+                backstory = p.story?.Title ?? "",
+                gender = p.gender.ToString(),
+                age = p.ageTracker?.AgeBiologicalYears ?? -1,
+                lifeStage = p.ageTracker?.CurLifeStage?.defName ?? "",
+                mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
+                comfort = p.GetStatValue(StatDefOf.Comfort, true),
+                needs = p.needs?.AllNeeds.Select(n => new { need = n.def.defName, level = n.CurLevelPercentage * 100 }).ToList(),
+                health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
+                hediffs = p.health?.hediffSet?.hediffs.Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
+                visibleHediffs = p.health?.hediffSet?.hediffs.Where(h => h.Visible).Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
+                bleedingRate = p.health?.hediffSet?.BleedRateTotal ?? 0f,
+                isDowned = p.Downed,
+                isDrafted = p.Drafted,
+                currentJob = p.CurJob?.def?.defName ?? "",
+                thoughts = p.needs?.mood?.thoughts?.memories?.Memories.Select(t => t.def.defName).ToList(),
+                skills = p.skills?.skills.Select(s => new { skill = s.def.defName, level = s.Level, passion = s.passion.ToString() }).ToList(),
+                equipment = p.equipment?.AllEquipmentListForReading.Select(eq => new { def = eq.def.defName, hitPoints = eq.HitPoints }).ToList(),
+                apparel = p.apparel?.WornApparel.Select(a => new { def = a.def.defName, hitPoints = a.HitPoints }).ToList(),
+                inventory = p.inventory?.innerContainer.Select(i => new { def = i.def.defName, count = i.stackCount }).ToList(),
+                assignedArea = p.playerSettings?.AreaRestrictionInPawnCurrentMap?.Label,
+                ownedRoom = p.ownership?.OwnedRoom?.ID ?? 0,
+                relations = p.relations?.DirectRelations.Select(r => new { def = r.def.defName, other = r.otherPawn?.thingIDNumber }).ToList()
+            };
+        }
+
+        public object MechToObject(Pawn p) {
+            return new {
+                id = p.thingIDNumber,
+                name = p.Name?.ToStringShort ?? p.LabelShort,
+                kind = p.kindDef.defName,
+                position = new { x = p.Position.x, y = p.Position.z },
+                health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
+                hediff = p.health?.hediffSet?.hediffs?.Select(x => new { part = x.Part?.Label, label = x.Label }).ToList(),
+                currentJob = p.CurJob?.def?.defName ?? "",
+                energy = p.needs?.energy?.CurLevelPercentage * 100 ?? -1f,
+            };
+        }
 
         private List<Designator> allDesignatorsCache;
 
@@ -298,6 +311,14 @@ namespace ARROM {
         public object prisoners() {
             var ps = Find.CurrentMap?.mapPawns?.PrisonersOfColony.Select(PawnToObject).ToList();
             return ps;
+        }
+
+        public object mechanoids() {
+            var mechs = Find.CurrentMap?.mapPawns?.PawnsInFaction(Faction.OfPlayer)
+                ?.Where(p => p.RaceProps.IsMechanoid)
+                .Select(MechToObject)
+                .ToList();
+            return mechs;
         }
 
         public object colony() {
