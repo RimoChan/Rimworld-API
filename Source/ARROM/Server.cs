@@ -1,20 +1,18 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-//using System.Xml;
+using System.Collections.Concurrent;
 using Newtonsoft.Json;
 using RimWorld;
-using RimWorld.Planet;
 using Verse;
+using Verse.AI;
 
 namespace ARROM
-{        
+{
     public class ApiHandler
     {
         public static readonly object TickSyncLock = new object();
@@ -26,7 +24,7 @@ namespace ARROM
             }
             return q;
         }
-        
+
         public Thing get_thing(int id)
         {
             var q = Find.CurrentMap.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == id);
@@ -34,6 +32,14 @@ namespace ARROM
                 throw new Exception($"thing {id} not found.");
             }
             return q;
+        }
+
+        public Zone get_zone(int id) {
+            Map map = Find.CurrentMap;
+            Zone zone = map.zoneManager.AllZones.FirstOrDefault(z => z.ID == id);
+            if (zone == null)
+                throw new Exception("zone not found.");
+            return zone;
         }
 
         public object PawnToObject(Pawn p) {
@@ -85,7 +91,6 @@ namespace ARROM
 
         public void input_surgery(int id, string recipe, string body_part) {
             Pawn p = get_pawn(id);
-            // RecipeDefOf
             RecipeDef r = DefDatabase<RecipeDef>.GetNamed(recipe);
 
             BodyPartRecord bodyPart = p.health.hediffSet.GetNotMissingParts().FirstOrDefault(part => part.Label == body_part);
@@ -111,13 +116,50 @@ namespace ARROM
         public void input_zone_add_cell(int zone_id, int x, int y) {
             Map map = Find.CurrentMap;
             Zone zone = map.zoneManager.AllZones.FirstOrDefault(z => z.ID == zone_id);
-            if (zone == null) 
+            if (zone == null)
                 throw new Exception("zone not found.");
             zone.AddCell(new IntVec3(x, 0, y));
         }
 
-        // public void input_zone_setting(int zone_id, int x, int y) {
-        // }
+        public void input_stockpile_zone_disallow_all(int zone_id) {
+            Zone_Stockpile zone = get_zone(zone_id) as Zone_Stockpile;
+            StorageSettings settings = zone.settings;
+            ThingFilter filter = settings.filter;
+            filter.SetDisallowAll();
+        }
+
+        public void input_stockpile_zone_allow(int zone_id, string category) {
+            Zone_Stockpile zone = get_zone(zone_id) as Zone_Stockpile;
+            StorageSettings settings = zone.settings;
+            ThingFilter filter = settings.filter;
+            filter.SetAllow(DefDatabase<ThingCategoryDef>.GetNamed(category), true);
+        }
+
+        public void input_stockpile_zone_priority(int zone_id, int priority) {
+            Zone_Stockpile zone = get_zone(zone_id) as Zone_Stockpile;
+            StorageSettings settings = zone.settings;
+            settings.Priority = (StoragePriority)priority;
+        }
+
+        public void input_pawn_interact(int pawn_id, int target_id, string job) {
+            Pawn p = get_pawn(pawn_id);
+            Thing target = get_thing(target_id);
+            JobDef jd = DefDatabase<JobDef>.GetNamed(job);
+            p.jobs.TryTakeOrderedJob(JobMaker.MakeJob(jd, target));
+        }
+
+        public void input_pawn_interact_biosculpter(int pawn_id, int target_id, string cycle_key) {
+            // Available cycle_key: medic,bioregeneration,ageReversal,pleasure
+            Pawn p = get_pawn(pawn_id);
+            Thing target = get_thing(target_id);
+            Job j = JobMaker.MakeJob(JobDefOf.EnterBiosculpterPod, target);
+            j.biosculpterCycleKey = cycle_key;
+            p.jobs.TryTakeOrderedJob(j);
+        }
+
+        public void input_message(string text) {
+            Messages.Message(text, MessageTypeDefOf.NeutralEvent, true);
+        }
 
         public void input_command(int id, string label, int target_id)
         {
@@ -178,6 +220,50 @@ namespace ARROM
         public void input_remove_all_designation(int id){
             Thing target = get_thing(id);
             Find.CurrentMap.designationManager.RemoveAllDesignationsOn(target);
+        }
+
+        public void input_production_recipe(int id, string recipe, string repeat_mode, int count) {
+            RecipeDef r = DefDatabase<RecipeDef>.GetNamed(recipe);
+            Building_WorkTable table = get_thing(id) as Building_WorkTable;
+            Bill_Production bill = new Bill_Production(r);
+            bill.repeatMode = DefDatabase<BillRepeatModeDef>.GetNamed(repeat_mode);
+            bill.targetCount = bill.repeatCount = count;
+            table.billStack.AddBill(bill);
+        }
+
+        public string biosculpter_pods() {
+            var result = Find.CurrentMap.listerThings.AllThings.Where(t => t.def?.defName == "BiosculpterPod").Select(b => {
+                CompBiosculpterPod pod = b.TryGetComp<CompBiosculpterPod>();
+                Pawn biotunedTo = pod.GetType().GetField("biotunedTo", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(pod) as Pawn;
+                return new {
+                    id=b.thingIDNumber,
+                    occupant=pod.Occupant?.thingIDNumber,
+                    biotuned_to=biotunedTo?.thingIDNumber,
+                    queued_pawn=pod.queuedPawn?.thingIDNumber,
+                    current_cycle=pod.CurrentCycle?.Props?.key,
+                    state=pod.State.ToString(),
+                };
+            });
+            return to_json(result);
+        }
+
+        public string get_production_recipe(int id) {
+            Building_WorkTable bg = get_thing(id) as Building_WorkTable;
+            return to_json(bg.BillStack.Bills.Select(b => new {
+                recipe=b.recipe.defName,
+                suspended=b.suspended,
+            }));
+        }
+
+        public string to_json(object x) {
+            return JsonConvert.SerializeObject(
+                x,
+                new JsonSerializerSettings
+                {
+                    Converters = new List<JsonConverter>(),
+                    Formatting = Newtonsoft.Json.Formatting.Indented,
+                }
+            );
         }
 
         public string things()
@@ -363,13 +449,13 @@ namespace ARROM
                     name = f.Name,
                     def = f.def?.defName,
                     is_player = f.IsPlayer,
-                    relation = f.IsPlayer ? string.Empty : 
+                    relation = f.IsPlayer ? string.Empty :
                         (
                             Find.FactionManager?.OfPlayer != null
                             ? Find.FactionManager.OfPlayer.RelationKindWith(f).ToString()
                             : string.Empty
                         ),
-                    goodwill = f.IsPlayer ? 0 : 
+                    goodwill = f.IsPlayer ? 0 :
                         (Find.FactionManager?.OfPlayer?.GoodwillWith(f) ?? 0),
                 })
                 .ToList();
@@ -444,7 +530,7 @@ namespace ARROM
                 Formatting = Newtonsoft.Json.Formatting.Indented
             });
         }
-        
+
         public string buildings() {
             var result = Find.CurrentMap.listerThings.AllThings.Where(t => t.def.building != null).Select(b => new
             {
@@ -461,13 +547,13 @@ namespace ARROM
                 Formatting = Newtonsoft.Json.Formatting.Indented
             });
         }
-        
+
         // public string buildings(bool owned)
         // {
         //     IEnumerable<Building> buildings;
         //     if (owned)
         //         buildings = Find.CurrentMap?.listerBuildings?.allBuildingsColonist ?? Enumerable.Empty<Building>();
-        //     else 
+        //     else
         //         buildings = Find.CurrentMap?.listerBuildings?.allBuildingsNonColonist ?? Enumerable.Empty<Building>();
         //     var list = buildings.Select(b => new
         //     {
@@ -564,6 +650,14 @@ namespace ARROM
             });
         }
 
+        public string thing_def() {
+            return to_json(DefDatabase<ThingDef>.AllDefs.Select(i => i.defName));
+        }
+
+        public string recipe_def() {
+            return to_json(DefDatabase<RecipeDef>.AllDefs.Select(i => i.defName).ToList());
+        }
+
         public string Ping()
         {
             return "Pong!";
@@ -584,6 +678,7 @@ namespace ARROM
         private static string _cacheColonists = "[]";
         private static readonly Dictionary<int, string> _cacheColonistsById = new Dictionary<int, string>();
         private static readonly object _cacheLock = new object();
+        public static readonly ConcurrentQueue<HttpListenerContext> MainThreadRequestQueue = new ConcurrentQueue<HttpListenerContext>();
 
         static Server()
         {
@@ -637,7 +732,7 @@ namespace ARROM
                 try
                 {
                     var ctx = await _listener.GetContextAsync();
-                    _ = Task.Run(() => Handle(ctx)); // fire-and-forget
+                    假Handle(ctx);
                 }
                 catch (Exception ex)
                 {
@@ -646,7 +741,11 @@ namespace ARROM
             }
         }
 
-        private static void Handle(HttpListenerContext ctx)
+        public static void 假Handle(HttpListenerContext ctx) {
+            MainThreadRequestQueue.Enqueue(ctx);
+        }
+
+        public static void Handle(HttpListenerContext ctx)
         {
             try
             {
@@ -910,7 +1009,7 @@ namespace ARROM
             });
         }
         */
-        
+
 
         private static string GetAllMapTiles()
         {

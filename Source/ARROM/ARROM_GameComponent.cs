@@ -26,6 +26,10 @@ namespace ARROM
                 tickCounter = 0;
                 Server.RefreshCache();
             }
+            while (Server.MainThreadRequestQueue.TryDequeue(out var ctx))
+            {
+                Server.Handle(ctx);
+            }
         }
     }
 }
