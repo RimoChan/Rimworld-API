@@ -5,7 +5,6 @@ namespace ARROM
 {
     public class ARROM_GameComponent : GameComponent
     {
-        private int tickCounter = ARROM_Mod.Settings.refreshIntervalTicks - 1;
 
         public ARROM_GameComponent(Game _) : base()
         {
@@ -20,12 +19,6 @@ namespace ARROM
 
         public override void GameComponentTick()
         {
-            tickCounter++;
-            if (tickCounter >= ARROM_Mod.Settings.refreshIntervalTicks)
-            {
-                tickCounter = 0;
-                Server.RefreshCache();
-            }
             while (Server.MainThreadRequestQueue.TryDequeue(out var ctx))
             {
                 Server.Handle(ctx);

@@ -25,8 +25,7 @@ namespace ARROM
             return q;
         }
 
-        public Thing get_thing(int id)
-        {
+        public Thing get_thing(int id) {
             var q = Find.CurrentMap.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == id);
             if (q == null) {
                 throw new Exception($"thing {id} not found.");
@@ -69,39 +68,40 @@ namespace ARROM
             {
                 allDesignatorsCache = new List<Designator>();
                 foreach (DesignationCategoryDef categoryDef in DefDatabase<DesignationCategoryDef>.AllDefs)
-                {
                     allDesignatorsCache.AddRange(categoryDef.ResolvedAllowedDesignators);
-                }
             }
             return allDesignatorsCache;
         }
 
+        private static Dictionary<string, int> CountThings(SlotGroup group) {
+            var dict = new Dictionary<string, int>();
+            if (group == null) return dict;
+            foreach (var thing in group.HeldThings)
+            {
+                string def = thing.def?.defName;
+                if (string.IsNullOrEmpty(def)) continue;
+                dict[def] = dict.ContainsKey(def) ? dict[def] + thing.stackCount : thing.stackCount;
+            }
+            return dict;
+        }
+
         public void input_blueprint(int x, int y, string thing, string stuff, string rotation) {
             ThingDef thingToBuild = DefDatabase<ThingDef>.GetNamed(thing);
-            ThingDef stuffToUse = null;
-            if (stuff != "")
-                stuffToUse = DefDatabase<ThingDef>.GetNamed(stuff);
+            ThingDef stuffToUse = string.IsNullOrEmpty(stuff) ? null : DefDatabase<ThingDef>.GetNamed(stuff);
             IntVec3 desiredPosition = new IntVec3(x, 0, y);
-            Faction playerFaction = Faction.OfPlayer;
-            if (!GenConstruct.CanPlaceBlueprintAt(thingToBuild, desiredPosition, Rot4.FromString(rotation), Find.CurrentMap, stuffDef: stuffToUse)) {
+            if (!GenConstruct.CanPlaceBlueprintAt(thingToBuild, desiredPosition, Rot4.FromString(rotation), Find.CurrentMap, stuffDef: stuffToUse))
                 throw new Exception("cannot not place blueprint.");
-            }
-            GenConstruct.PlaceBlueprintForBuild(thingToBuild, desiredPosition, Find.CurrentMap, Rot4.FromString(rotation), playerFaction, stuff: stuffToUse);
+            GenConstruct.PlaceBlueprintForBuild(thingToBuild, desiredPosition, Find.CurrentMap, Rot4.FromString(rotation), Faction.OfPlayer, stuff: stuffToUse);
         }
 
         public void input_surgery(int id, string recipe, string body_part) {
             Pawn p = get_pawn(id);
-            RecipeDef r = DefDatabase<RecipeDef>.GetNamed(recipe);
 
             BodyPartRecord bodyPart = p.health.hediffSet.GetNotMissingParts().FirstOrDefault(part => part.Label == body_part);
             if (bodyPart == null) {
-                string hint = String.Join(", ", p.health.hediffSet.GetNotMissingParts().Select(part => part.Label));
-                throw new Exception($"Available are {hint}");
+                throw new Exception($"Available are {string.Join(", ", p.health.hediffSet.GetNotMissingParts().Select(part => part.Label))}");
             }
-
-            Bill_Medical newBill = new Bill_Medical(r, null);
-            newBill.Part = bodyPart;
-            p.health.surgeryBills.AddBill(newBill);
+            p.health.surgeryBills.AddBill(new Bill_Medical(DefDatabase<RecipeDef>.GetNamed(recipe), null) { Part = bodyPart });
         }
 
         public string input_create_zone(string label, int x, int y) {
@@ -116,8 +116,6 @@ namespace ARROM
         public void input_zone_add_cell(int zone_id, int x, int y) {
             Map map = Find.CurrentMap;
             Zone zone = map.zoneManager.AllZones.FirstOrDefault(z => z.ID == zone_id);
-            if (zone == null)
-                throw new Exception("zone not found.");
             zone.AddCell(new IntVec3(x, 0, y));
         }
 
@@ -231,8 +229,11 @@ namespace ARROM
             table.billStack.AddBill(bill);
         }
 
-        public string biosculpter_pods() {
-            var result = Find.CurrentMap.listerThings.AllThings.Where(t => t.def?.defName == "BiosculpterPod").Select(b => {
+
+        #region Data Retrieval (Object Returns)
+
+        public object biosculpter_pods() {
+            return Find.CurrentMap.listerThings.AllThings.Where(t => t.def?.defName == "BiosculpterPod").Select(b => {
                 CompBiosculpterPod pod = b.TryGetComp<CompBiosculpterPod>();
                 Pawn biotunedTo = pod.GetType().GetField("biotunedTo", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(pod) as Pawn;
                 return new {
@@ -244,29 +245,17 @@ namespace ARROM
                     state=pod.State.ToString(),
                 };
             });
-            return to_json(result);
         }
 
-        public string get_production_recipe(int id) {
+        public object get_production_recipe(int id) {
             Building_WorkTable bg = get_thing(id) as Building_WorkTable;
-            return to_json(bg.BillStack.Bills.Select(b => new {
+            return bg.BillStack.Bills.Select(b => new {
                 recipe=b.recipe.defName,
                 suspended=b.suspended,
-            }));
+            });
         }
 
-        public string to_json(object x) {
-            return JsonConvert.SerializeObject(
-                x,
-                new JsonSerializerSettings
-                {
-                    Converters = new List<JsonConverter>(),
-                    Formatting = Newtonsoft.Json.Formatting.Indented,
-                }
-            );
-        }
-
-        public string things()
+        public object things()
         {
             var result = Find.CurrentMap.listerThings.AllThings.Select(p => new
                 {
@@ -277,37 +266,96 @@ namespace ARROM
                     is_forbidden = p.IsForbidden(Faction.OfPlayer),
                 }
             ).ToList();
-            return JsonConvert.SerializeObject(
-                result,
-                new JsonSerializerSettings
-                {
-                    Converters = new List<JsonConverter>(),
-                    Formatting = Newtonsoft.Json.Formatting.Indented,
-                }
-            );
+            return result;
+        }
+        
+        public object zones() {
+            return Find.CurrentMap.zoneManager.AllZones.Select(z => new { id = z.ID, label = z.label });
         }
 
-        public string zones() {
-            Map map = Find.CurrentMap;
-            var zs = map.zoneManager.AllZones.Select(z => new {id = z.ID, label = z.label});
-            return JsonConvert.SerializeObject(zs, new JsonSerializerSettings
-            {
-                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-        public string prisoners()
+        public object prisoners()
         {
             var ps = Find.CurrentMap?.mapPawns?.PrisonersOfColony.Select(PawnToObject).ToList();
-            return JsonConvert.SerializeObject(ps, new JsonSerializerSettings
-            {
-                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
+            return ps;
         }
 
-        public string animals()
+        public object colony()
+        {
+            Map map = Find.CurrentMap;
+            return new {
+                colonyName = map?.info?.parent?.LabelCap ?? "Unnamed",
+                colonistCount = map?.mapPawns?.FreeColonistsCount ?? 0,
+                wealth = map?.wealthWatcher?.WealthTotal ?? 0
+            };
+        }
+
+        public object letters() => Find.LetterStack?.LettersListForReading.Select(l => new {
+            label = l.GetType().GetProperty("LabelCap")?.GetValue(l)?.ToString(),
+            type = l.def?.letterClass?.ToString(),
+            arrivalTime = l.arrivalTime
+        }).ToList();
+
+        public object colonists() => Find.CurrentMap?.mapPawns?.FreeColonists.Select(PawnToObject).ToList() ?? new List<object>();
+
+        public object colonist(int id)
+        {
+            Pawn p = Find.CurrentMap?.mapPawns?.FreeColonists.FirstOrDefault(x => x.thingIDNumber == id);
+            if (p == null) return new { };
+
+            return new {
+                id,
+                commands = p.GetGizmos().Select(m => new { type = m.GetType().FullName, label = (m as Command)?.Label }),
+                name = p.Name.ToStringFull,
+                backstory = p.story?.Title ?? "",
+                gender = p.gender.ToString(),
+                age = p.ageTracker?.AgeBiologicalYears ?? -1,
+                lifeStage = p.ageTracker?.CurLifeStage?.defName ?? "",
+                mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
+                comfort = p.GetStatValue(StatDefOf.Comfort, true),
+                needs = p.needs?.AllNeeds.Select(n => new { need = n.def.defName, level = n.CurLevelPercentage * 100 }).ToList(),
+                health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
+                hediffs = p.health?.hediffSet?.hediffs.Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
+                visibleHediffs = p.health?.hediffSet?.hediffs.Where(h => h.Visible).Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
+                bleedingRate = p.health?.hediffSet?.BleedRateTotal ?? 0f,
+                isDowned = p.Downed,
+                isDrafted = p.Drafted,
+                currentJob = p.CurJob?.def?.defName ?? "",
+                thoughts = p.needs?.mood?.thoughts?.memories?.Memories.Select(t => t.def.defName).ToList(),
+                skills = p.skills?.skills.Select(s => new { skill = s.def.defName, level = s.Level, passion = s.passion.ToString() }).ToList(),
+                equipment = p.equipment?.AllEquipmentListForReading.Select(eq => new { def = eq.def.defName, hitPoints = eq.HitPoints }).ToList(),
+                apparel = p.apparel?.WornApparel.Select(a => new { def = a.def.defName, hitPoints = a.HitPoints }).ToList(),
+                inventory = p.inventory?.innerContainer.Select(i => new { def = i.def.defName, count = i.stackCount }).ToList(),
+                assignedArea = p.playerSettings?.AreaRestrictionInPawnCurrentMap?.Label,
+                ownedRoom = p.ownership?.OwnedRoom?.ID ?? 0,
+                relations = p.relations?.DirectRelations.Select(r => new { def = r.def.defName, other = r.otherPawn?.thingIDNumber }).ToList()
+            };
+        }
+
+        public object map_tiles()
+        {
+            var map = Find.CurrentMap;
+            var tiles = new List<object>();
+            if (map != null)
+                for (int x = 0; x < map.Size.x; x++)
+                    for (int y = 0; y < map.Size.z; y++)
+                        tiles.Add(new { x, y });
+            return tiles;
+        }
+
+        public object map_tile(int x, int y)
+        {
+            Map map = Find.CurrentMap;
+            IntVec3 cell = new IntVec3(x, 0, y);
+            if (map == null || !cell.InBounds(map)) return new { };
+            return new {
+                terrain = map.terrainGrid?.TerrainAt(cell)?.defName,
+                zone = map.zoneManager?.ZoneAt(cell)?.label,
+                things = map.thingGrid?.ThingsListAt(cell)?.Select(t => t.def?.defName).ToList() ?? new List<string>()
+            };
+        }
+
+
+        public object animals()
         {
             var animals = Find
                 .CurrentMap?.mapPawns?.AllPawns.Where(p => p.RaceProps?.Animal == true)
@@ -339,244 +387,65 @@ namespace ARROM
                 })
                 .ToList();
 
-            return JsonConvert.SerializeObject(
-                animals,
-                new JsonSerializerSettings
-                {
-                    Converters = new List<JsonConverter>(),
-                    Formatting = Newtonsoft.Json.Formatting.Indented,
-                }
-            );
+            return animals;
         }
 
-        public string storage_detail()
+        public object storage_detail()
         {
-            Map map = Find.CurrentMap;
             var storages = new List<object>();
-
-            var zones = map.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>();
-            foreach (var zone in zones)
-            {
-                var items = zone?.slotGroup.HeldThings.Select(t => new { id = t.thingIDNumber, def = t.def?.defName, stack_count = t.stackCount });
-                storages.Add(new { name = zone.label, items });
-            }
-
-            var buildings = map.listerBuildings?.allBuildingsColonist?.OfType<Building_Storage>() ?? Enumerable.Empty<Building_Storage>();
-            foreach (var building in buildings)
-            {
-                var items = building?.slotGroup.HeldThings.Select(t => new { id = t.thingIDNumber, def = t.def?.defName, stack_count = t.stackCount });
-                storages.Add(new { name = building.LabelCap, items = CountThings(building?.slotGroup)});
-            }
-
-            return JsonConvert.SerializeObject(storages, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
+            foreach (var zone in Find.CurrentMap.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>())
+                storages.Add(new { name = zone.label, items = zone?.slotGroup.HeldThings.Select(t => new { id = t.thingIDNumber, def = t.def?.defName, stack_count = t.stackCount }) });
+            foreach (var building in Find.CurrentMap.listerBuildings?.allBuildingsColonist?.OfType<Building_Storage>() ?? Enumerable.Empty<Building_Storage>())
+                storages.Add(new { name = building.LabelCap, items = CountThings(building?.slotGroup) });
+            return storages;
         }
 
-
-        public string storage()
+        public object storage()
         {
-            Map map = Find.CurrentMap;
             var storages = new List<object>();
-
-            var zones = map.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>();
-            foreach (var zone in zones)
-            {
+            foreach (var zone in Find.CurrentMap.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>())
                 storages.Add(new { name = zone.label, items = CountThings(zone?.slotGroup) });
-            }
-
-            var buildings = map.listerBuildings?.allBuildingsColonist?.OfType<Building_Storage>() ?? Enumerable.Empty<Building_Storage>();
-            foreach (var building in buildings)
-            {
-                storages.Add(new { name = building.LabelCap, items = CountThings(building?.slotGroup)});
-            }
-
-            return JsonConvert.SerializeObject(storages, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
+            foreach (var building in Find.CurrentMap.listerBuildings?.allBuildingsColonist?.OfType<Building_Storage>() ?? Enumerable.Empty<Building_Storage>())
+                storages.Add(new { name = building.LabelCap, items = CountThings(building?.slotGroup) });
+            return storages;
         }
 
-        private static Dictionary<string, int> CountThings(SlotGroup group)
+        public object mods() => LoadedModManager.RunningModsListForReading.Select(m => new { name = m.Name, packageId = m.PackageId });
+
+        public object factions()
         {
-            var dict = new Dictionary<string, int>();
-            if (group == null)
-                return dict;
-
-            foreach (var thing in group.HeldThings)
-            {
-                string def = thing.def?.defName;
-                if (string.IsNullOrEmpty(def))
-                    continue;
-
-                if (dict.ContainsKey(def))
-                    dict[def] += thing.stackCount;
-                else
-                    dict[def] = thing.stackCount;
-            }
-
-            return dict;
+            if (Current.ProgramState != ProgramState.Playing || Find.FactionManager == null) return new List<object>();
+            return Find.FactionManager.AllFactionsListForReading.Select(f => new {
+                name = f.Name, def = f.def?.defName, is_player = f.IsPlayer,
+                relation = f.IsPlayer ? "" : (Find.FactionManager?.OfPlayer != null ? Find.FactionManager.OfPlayer.RelationKindWith(f).ToString() : ""),
+                goodwill = f.IsPlayer ? 0 : (Find.FactionManager?.OfPlayer?.GoodwillWith(f) ?? 0),
+            }).ToList();
         }
 
-
-        public string mods()
+        public object research()
         {
-            var mods = LoadedModManager.RunningModsListForReading
-                .Select(m => new { name = m.Name, packageId = m.PackageId });
-            return JsonConvert.SerializeObject(mods, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-        public string factions()
-        {
-            // When no game is loaded (e.g. the main menu) Find.FactionManager is
-            // null which would cause a NullReferenceException. Return an empty
-            // list in that case.
-            if (Current.ProgramState != ProgramState.Playing || Find.FactionManager == null)
-            {
-                return "[]";
-            }
-
-            var factions = Find.FactionManager.AllFactionsListForReading
-                .Select(f => new
-                {
-                    name = f.Name,
-                    def = f.def?.defName,
-                    is_player = f.IsPlayer,
-                    relation = f.IsPlayer ? string.Empty :
-                        (
-                            Find.FactionManager?.OfPlayer != null
-                            ? Find.FactionManager.OfPlayer.RelationKindWith(f).ToString()
-                            : string.Empty
-                        ),
-                    goodwill = f.IsPlayer ? 0 :
-                        (Find.FactionManager?.OfPlayer?.GoodwillWith(f) ?? 0),
-                })
-                .ToList();
-
-            return JsonConvert.SerializeObject(factions, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-        private IEnumerable<object> gizmo_to_dict(Thing b) {
-            try {
-                return b.GetGizmos()
-                    .Select(m => new {
-                        type = m.GetType().FullName,
-                        label = (m as Command)?.Label,
-                    }).ToList();;
-            } catch {
-                return null;
-            }
-        }
-
-        public string research()
-        {
-            // When no game is loaded (e.g. the main menu), Current.Game is null.
             if (Current.ProgramState != ProgramState.Playing || Current.Game == null)
-            {
-                var empty = new
-                {
-                    currentProject = string.Empty,
-                    progress = 0f,
-                    finishedProjects = new List<string>()
-                };
-
-                return JsonConvert.SerializeObject(empty, new JsonSerializerSettings
-                {
-                    Converters = new List<JsonConverter>(),
-                    Formatting = Newtonsoft.Json.Formatting.Indented
-                });
-            }
+                return new { currentProject = string.Empty, progress = 0f, finishedProjects = new List<string>() };
 
             var manager = Find.ResearchManager;
-            ResearchProjectDef current = null;
-
-            if (manager != null)
-            {
-                // R�cup�re le champ priv� 'currentProj'
-                var fld = typeof(ResearchManager)
-                    .GetField("currentProj", BindingFlags.Instance | BindingFlags.NonPublic);
-                if (fld != null)
-                    current = (ResearchProjectDef)fld.GetValue(manager);
-            }
-
-            float progress = 0f;
-            if (current != null)
-                progress = manager.GetProgress(current) / current.baseCost;
-
-            var data = new
-            {
+            ResearchProjectDef current = manager != null ? (ResearchProjectDef)typeof(ResearchManager).GetField("currentProj", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(manager) : null;
+            return new {
                 currentProject = current?.defName ?? string.Empty,
-                progress,
-                finishedProjects = DefDatabase<ResearchProjectDef>.AllDefsListForReading
-                    .Where(p => p.IsFinished)
-                    .Select(p => p.defName)
-                    .ToList()
+                progress = current != null ? manager.GetProgress(current) / current.baseCost : 0f,
+                finishedProjects = DefDatabase<ResearchProjectDef>.AllDefsListForReading.Where(p => p.IsFinished).Select(p => p.defName).ToList()
             };
-
-            return JsonConvert.SerializeObject(data, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
         }
 
-        public string buildings() {
-            var result = Find.CurrentMap.listerThings.AllThings.Where(t => t.def.building != null).Select(b => new
-            {
-                id = b.thingIDNumber,
-                type = b.GetType().FullName,
-                def = b.def?.defName,
-                position = new { x = b.Position.x, y = b.Position.z },
-                is_forbidden = b.IsForbidden(Faction.OfPlayer),
-                faction = b.Faction?.ToString(),
-            }).ToList();
-            return JsonConvert.SerializeObject(result, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
+        public object buildings() => Find.CurrentMap.listerThings.AllThings.Where(t => t.def.building != null).Select(b => new {
+            id = b.thingIDNumber, type = b.GetType().FullName, def = b.def?.defName, position = new { x = b.Position.x, y = b.Position.z },
+            is_forbidden = b.IsForbidden(Faction.OfPlayer), faction = b.Faction?.ToString()
+        }).ToList();
 
-        // public string buildings(bool owned)
-        // {
-        //     IEnumerable<Building> buildings;
-        //     if (owned)
-        //         buildings = Find.CurrentMap?.listerBuildings?.allBuildingsColonist ?? Enumerable.Empty<Building>();
-        //     else
-        //         buildings = Find.CurrentMap?.listerBuildings?.allBuildingsNonColonist ?? Enumerable.Empty<Building>();
-        //     var list = buildings.Select(b => new
-        //     {
-        //         id = b.thingIDNumber,
-        //         type = b.GetType().FullName,
-        //         def = b.def?.defName,
-        //         position = new { x = b.Position.x, y = b.Position.z },
-        //         is_forbidden = b.IsForbidden(Faction.OfPlayer),
-        //     }).ToList();
-        //     return JsonConvert.SerializeObject(list, new JsonSerializerSettings
-        //     {
-        //         Converters = new List<JsonConverter>(),
-        //         Formatting = Newtonsoft.Json.Formatting.Indented
-        //     });
-        // }
-
-        public string map()
+        public object map()
         {
             Map map = Find.CurrentMap;
-            if (map == null) return "{}";
-
-            var info = new
-            {
+            if (map == null) return new { };
+            return new {
                 weather = map.weatherManager?.curWeather?.defName,
                 temperature = map.mapTemperature?.OutdoorTemp ?? 0f,
                 hour = GenLocalDate.HourOfDay(map),
@@ -584,113 +453,53 @@ namespace ARROM
                 season = GenLocalDate.Season(map).ToString(),
                 total_ticks = Find.TickManager.TicksGame,
             };
-
-            return JsonConvert.SerializeObject(info, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
         }
 
-        public string alerts()
+        public object alerts()
         {
-            // When no game is loaded (example on the main menu) Find.Alerts throws
-            // an InvalidCastException. Simply return an empty list in that case
-            // instead of logging an error.
-            if (Current.ProgramState != ProgramState.Playing)
-                return "[]";
-
-            var alertsField = typeof(AlertsReadout).GetField("activeAlerts", BindingFlags.Instance | BindingFlags.NonPublic);
-
-            IEnumerable<Alert> active = null;
+            if (Current.ProgramState != ProgramState.Playing) return new List<object>();
             try
             {
-                active = alertsField?.GetValue(Find.Alerts) as IEnumerable<Alert>;
+                var active = typeof(AlertsReadout).GetField("activeAlerts", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(Find.Alerts) as IEnumerable<Alert>;
+                return active?.Where(a => a.Active).Select(a => new { label = a.Label, priority = a.Priority.ToString() }).ToList();
             }
-            catch
-            {
-                return "[]";
-            }
-
-            List<object> list;
-            if (active == null)
-            {
-                list = new List<object>();
-            }
-            else
-            {
-                list = active.Where(a => a.Active)
-                    .Select(a => (object)new { label = a.Label, priority = a.Priority.ToString() })
-                    .ToList();
-            }
-
-            return JsonConvert.SerializeObject(list, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
+            catch { return new List<object>(); }
         }
 
-        public string jobs()
-        {
-            var colonists = Find.CurrentMap?.mapPawns?.FreeColonists ?? Enumerable.Empty<Pawn>();
+        public object jobs() => (Find.CurrentMap?.mapPawns?.FreeColonists ?? Enumerable.Empty<Pawn>()).Select(p => new {
+            id = p.thingIDNumber, name = p.Name.ToStringShort, current = p.CurJob?.def?.defName, queue = p.jobs?.jobQueue?.Select(q => q.job?.def?.defName).ToList() ?? new List<string>()
+        }).ToList();
 
-            var list = colonists.Select(p => new
-            {
-                id = p.thingIDNumber,
-                name = p.Name.ToStringShort,
-                current = p.CurJob?.def?.defName,
-                queue = p.jobs?.jobQueue?.Select(q => q.job?.def?.defName).ToList() ?? new List<string>()
-            }).ToList();
-
-            return JsonConvert.SerializeObject(list, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
+        public object thing_def() {
+            return DefDatabase<ThingDef>.AllDefs.Select(i => i.defName);
         }
 
-        public string thing_def() {
-            return to_json(DefDatabase<ThingDef>.AllDefs.Select(i => i.defName));
-        }
-
-        public string recipe_def() {
-            return to_json(DefDatabase<RecipeDef>.AllDefs.Select(i => i.defName).ToList());
+        public object recipe_def() {
+            return DefDatabase<RecipeDef>.AllDefs.Select(i => i.defName).ToList();
         }
 
         public string Ping()
         {
             return "Pong!";
         }
+        #endregion
     }
-
     public static class Server
     {
         private static HttpListener _listener;
         private static int Port => ARROM_Mod.Settings?.serverPort ?? 8765;
         private static readonly string Prefix = $"http://+:{Port}/";
         private static Thread _thread;
-        private static readonly ApiHandler _apiHandler;
-
-        // Cached JSON responses refreshed on game load
-        private static string _cacheColonyInfo = "{}";
-        private static string _cacheLetters = "[]";
-        private static string _cacheColonists = "[]";
-        private static readonly Dictionary<int, string> _cacheColonistsById = new Dictionary<int, string>();
-        private static readonly object _cacheLock = new object();
+        private static readonly ApiHandler _apiHandler = new ApiHandler();
         public static readonly ConcurrentQueue<HttpListenerContext> MainThreadRequestQueue = new ConcurrentQueue<HttpListenerContext>();
 
-        static Server()
-        {
-            _apiHandler = new ApiHandler();
-        }
 
         public static void Start()
         {
             if (_listener != null) return;
 
             _listener = new HttpListener();
-            _listener.Prefixes.Add(Prefix);          // ex. http://localhost:8765/
+            _listener.Prefixes.Add(Prefix);
             _listener.Start();
 
             _thread = new Thread(Loop) { IsBackground = true };
@@ -703,26 +512,6 @@ namespace ARROM
             _listener?.Close();
             _listener = null;
             _thread = null;
-        }
-
-        public static void RefreshCache()
-        {
-            lock (_cacheLock)
-            {
-                _cacheColonyInfo = GetColonyInfo();
-                _cacheLetters = GetLetters();
-                _cacheColonists = GetColonists();
-                // _cacheBuildings = _apiHandler.buildings();
-
-                _cacheColonistsById.Clear();
-                var colonists = (Find.CurrentMap?.mapPawns?.FreeColonists ?? Enumerable.Empty<Pawn>()).ToList();
-
-                foreach (var pawn in colonists)
-                {
-                    _cacheColonistsById[pawn.thingIDNumber] = GetColonistById(pawn.thingIDNumber.ToString());
-                }
-            }
-            //Log.Message("[ARROM] Cache refreshed");
         }
 
         private static async void Loop()
@@ -751,100 +540,48 @@ namespace ARROM
             {
                 Monitor.Enter(ApiHandler.TickSyncLock);
                 string path = ctx.Request.Url.AbsolutePath.Trim('/').ToLowerInvariant();
+                string methodName = path;
                 string json;
 
-                if (path == "colony")
+                var argsDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string key in ctx.Request.QueryString.AllKeys)
                 {
-                    json = _cacheColonyInfo;
+                    if (key != null) argsDict[key] = ctx.Request.QueryString[key];
                 }
-                else if (path == "letters")
+                MethodInfo method = _apiHandler.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (method == null)
                 {
-                    json = _cacheLetters;
-                }
-                else if (path == "colonists")
-                {
-                    json = _cacheColonists;
-                }
-                else if (path == "map/tiles")
-                {
-                    json = GetAllMapTiles();
-                }
-                else if (path.StartsWith("map/tiles/"))
-                {
-                    var parts = path.Split('/');
-                    // on attend au moins 5 segments : ["", "map", "tiles", "{x}", "{y}", ...]
-                    if (parts.Length >= 5
-                        && int.TryParse(parts[3], out int tx)
-                        && int.TryParse(parts[4], out int ty))
-                    {
-                        json = GetMapTile(tx, ty);
-                    }
-                    else
-                    {
-                        json = "{}";
-                    }
-                }
-                else if (path.StartsWith("colonists/"))
-                {
-                    string idPart = path.Split('/').Last();
-                    if (
-                        int.TryParse(idPart, out int cid)
-                        && _cacheColonistsById.TryGetValue(cid, out json)
-                    )
-                    {
-                        // json already populated by TryGetValue
-                    }
-                    else
-                    {
-                        json = "{}";
-                    }
+                    ctx.Response.StatusCode = 404;
+                    json = $"\"Method {methodName} not found.\"";
                 }
                 else
                 {
-                    string methodName = path;
-                    MethodInfo method = _apiHandler
-                        .GetType()
-                        .GetMethod(
-                            methodName,
-                            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase
-                        );
-                    if (method == null)
+                    var methodParams = method.GetParameters();
+                    var args = new object[methodParams.Length];
+                    for (int i = 0; i < methodParams.Length; i++)
                     {
-                        ctx.Response.StatusCode = 404;
-                        json = $"\"Method {methodName} not found.\"";
-                    }
-                    else
-                    {
-                        var methodParams = method.GetParameters();
-                        var queryParams = ctx.Request.QueryString;
-                        var args = new object[methodParams.Length];
-                        for (int i = 0; i < methodParams.Length; i++) {
-                            var param = methodParams[i];
-                            string paramValueStr = queryParams.Get(param.Name);
-
-                            if (paramValueStr == null)
-                            {
-                                if (!param.IsOptional)
-                                {
-                                    ctx.Response.StatusCode = 400;
-                                    json = $"\"Missing required parameter: {param.Name}\"";
-                                }
-                                args[i] = param.DefaultValue;
-                            }
-                            else
-                            {
-                                args[i] = Convert.ChangeType(
-                                    paramValueStr,
-                                    param.ParameterType
-                                );
-                            }
+                        var param = methodParams[i];
+                        if (argsDict.TryGetValue(param.Name, out string paramValueStr))
+                        {
+                            args[i] = Convert.ChangeType(paramValueStr, param.ParameterType);
                         }
-                        object result = method.Invoke(_apiHandler, args);
-                        if (method.ReturnType == typeof(void))
-                            json = "\"ok\"";
                         else
-                            json = (result as string);
+                        {
+                            if (!param.IsOptional) { ctx.Response.StatusCode = 400; throw new Exception($"Missing required parameter: {param.Name}"); }
+                            args[i] = param.DefaultValue;
+                        }
                     }
+
+                    object result = method.Invoke(_apiHandler, args);
+                    if (method.ReturnType == typeof(void))
+                        json = "\"ok\"";
+                    else
+                        json = JsonConvert.SerializeObject(result, new JsonSerializerSettings {
+                                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                                Converters = new List<JsonConverter>(),
+                                Formatting = Formatting.Indented
+                            }
+                        );
                 }
 
                 byte[] data = Encoding.UTF8.GetBytes(json);
@@ -868,193 +605,5 @@ namespace ARROM
                 ctx.Response.OutputStream.Close();
             }
         }
-
-        #region Endpoints
-
-        private static string GetColonyInfo()
-        {
-            Map map = Find.CurrentMap;
-            var info = new
-            {
-                colonyName = map?.info?.parent?.LabelCap ?? "Unnamed",
-                colonistCount = map?.mapPawns?.FreeColonistsCount ?? 0,
-                wealth = map?.wealthWatcher?.WealthTotal ?? 0
-            };
-            return JsonConvert.SerializeObject(info, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-        private static string GetLetters()
-        {
-            var letters = Find.LetterStack?.LettersListForReading
-                .Select(l => new
-                {
-                    label = l.GetType().GetProperty("LabelCap")?.GetValue(l)?.ToString(),
-                    type = l.def?.letterClass?.ToString(),
-                    arrivalTime = l.arrivalTime
-                })
-                .ToList();
-
-            return JsonConvert.SerializeObject(letters, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-
-        private static string GetColonists()
-        {
-            var colonists = Find.CurrentMap?.mapPawns?.FreeColonists.Select(_apiHandler.PawnToObject).ToList();
-            return JsonConvert.SerializeObject(colonists, new JsonSerializerSettings
-            {
-                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-        private static string GetColonistById(string idStr)
-        {
-            if (!int.TryParse(idStr, out int id))
-                return "{}";
-            Pawn p = Find.CurrentMap?.mapPawns?.FreeColonists.FirstOrDefault(x =>
-                x.thingIDNumber == id
-            );
-            if (p == null)
-                return "{}";
-
-            var detail = new
-            {
-                id,
-                commands = p.GetGizmos()
-                    .Select(m => new {
-                        type = m.GetType().FullName,
-                        label = (m as Command)?.Label,
-                    }),
-                name = p.Name.ToStringFull,
-                backstory = p.story?.Title ?? "",
-                gender = p.gender.ToString(),
-                age = p.ageTracker?.AgeBiologicalYears ?? -1,
-                lifeStage = p.ageTracker?.CurLifeStage?.defName ?? "",
-                mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
-                comfort = p.GetStatValue(StatDefOf.Comfort, true),
-                needs = p.needs?.AllNeeds
-                    .Select(n => new { need = n.def.defName, level = n.CurLevelPercentage * 100 })
-                    .ToList(),
-                health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
-                hediffs = p.health?.hediffSet?.hediffs
-                    .Select(h => new { def = h.def.defName, severity = h.Severity })
-                    .ToList(),
-                visibleHediffs = p.health?.hediffSet?.hediffs
-                    .Where(h => h.Visible)
-                    .Select(h => new { def = h.def.defName, severity = h.Severity })
-                    .ToList(),
-                bleedingRate = p.health?.hediffSet?.BleedRateTotal ?? 0f,
-                isDowned = p.Downed,
-                isDrafted = p.Drafted,
-                // **ici on passe par la propri�t� Pawn.CurJob, et non jobs.CurJob**
-                currentJob = p.CurJob?.def?.defName ?? "",
-                thoughts = p.needs?.mood?.thoughts?.memories?.Memories
-                    .Select(t => t.def.defName)
-                    .ToList(),
-                skills = p.skills?.skills
-                    .Select(s => new { skill = s.def.defName, level = s.Level, passion = s.passion.ToString() })
-                    .ToList(),
-                equipment = p.equipment?.AllEquipmentListForReading
-                    .Select(eq => new { def = eq.def.defName, hitPoints = eq.HitPoints })
-                    .ToList(),
-                apparel = p.apparel?.WornApparel
-                    .Select(a => new { def = a.def.defName, hitPoints = a.HitPoints })
-                    .ToList(),
-                inventory = p.inventory?.innerContainer
-                    .Select(i => new { def = i.def.defName, count = i.stackCount })
-                    .ToList(),
-                assignedArea = p.playerSettings?.AreaRestrictionInPawnCurrentMap?.Label,
-                ownedRoom = p.ownership?.OwnedRoom?.ID ?? 0,
-                relations = p.relations?.DirectRelations
-                    .Select(r => new { def = r.def.defName, other = r.otherPawn?.thingIDNumber })
-                    .ToList()
-            };
-
-            return JsonConvert.SerializeObject(detail, new JsonSerializerSettings
-            {
-                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-        /*
-        private static string GetCaravans()
-        {
-            var caravans = Find.WorldObjects?.Caravans ?? new List<Caravan>();
-
-            var list = caravans
-                .Where(c => c.IsPlayerControlled)
-                .Select(c => new
-                {
-                    id = c.ID,
-                    name = c.LabelCap,
-                    tile = c.Tile,
-                    pawns = c.PawnsListForReading.Select(p => p.thingIDNumber).ToList()
-                })
-                .ToList();
-
-            return JsonConvert.SerializeObject(list, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-        */
-
-
-        private static string GetAllMapTiles()
-        {
-            var map = Find.CurrentMap;
-            if (map == null) return "[]";
-
-            // borne maximale : map.Size.x, map.Size.z
-            var tiles = new List<object>();
-            for (int x = 0; x < map.Size.x; x++)
-            {
-                for (int y = 0; y < map.Size.z; y++)
-                {
-                    tiles.Add(new { x, y });
-                }
-            }
-
-            return JsonConvert.SerializeObject(tiles, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-        private static string GetMapTile(int x, int y)
-        {
-            Map map = Find.CurrentMap;
-            if (map == null) return "{}";
-
-            IntVec3 cell = new IntVec3(x, 0, y);
-            if (!cell.InBounds(map)) return "{}";
-
-            var info = new
-            {
-                terrain = map.terrainGrid?.TerrainAt(cell)?.defName,
-                zone = map.zoneManager?.ZoneAt(cell)?.label,
-                things = map.thingGrid?.ThingsListAt(cell)?.Select(t => t.def?.defName).ToList() ?? new List<string>()
-            };
-
-            return JsonConvert.SerializeObject(info, new JsonSerializerSettings
-            {
-                Converters = new List<JsonConverter>(),
-                Formatting = Newtonsoft.Json.Formatting.Indented
-            });
-        }
-
-        #endregion
     }
 }
