@@ -1,8 +1,8 @@
 using Verse;
 
-namespace ARROM
+namespace RimworldAPI
 {
-    public class ARROM_Settings : ModSettings
+    public class RimworldAPI_Settings : ModSettings
     {
         public int serverPort = 18765;
         public int refreshIntervalTicks = 300;

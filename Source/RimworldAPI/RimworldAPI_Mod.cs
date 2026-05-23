@@ -1,29 +1,29 @@
 using UnityEngine;
 using Verse;
 
-namespace ARROM
+namespace RimworldAPI
 {
-    public class ARROM_Mod : Mod
+    public class RimworldAPI_Mod : Mod
     {
-        public static ARROM_Settings Settings;
+        public static RimworldAPI_Settings Settings;
 
-        public ARROM_Mod(ModContentPack content) : base(content)
+        public RimworldAPI_Mod(ModContentPack content) : base(content)
         {
-            Settings = GetSettings<ARROM_Settings>();
+            Settings = GetSettings<RimworldAPI_Settings>();
         }
 
-        public override string SettingsCategory() => "ARROM";
+        public override string SettingsCategory() => "RimworldAPI";
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
             Listing_Standard list = new Listing_Standard();
             list.Begin(inRect);
 
-            list.Label("ARROM.ServerPortLabel".Translate());
+            list.Label("RimworldAPI.ServerPortLabel".Translate());
             string bufferPort = Settings.serverPort.ToString();
             list.TextFieldNumeric(ref Settings.serverPort, ref bufferPort, 1, 65535);
 
-            list.Label("ARROM.RefreshIntervalLabel".Translate());
+            list.Label("RimworldAPI.RefreshIntervalLabel".Translate());
             string bufferRefresh = Settings.refreshIntervalTicks.ToString();
             list.TextFieldNumeric(ref Settings.refreshIntervalTicks, ref bufferRefresh, 1);
 

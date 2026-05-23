@@ -1,12 +1,12 @@
 # API-REST-RimwOrld-Mod
-ARROM is a mod that give you an API useable for your current rimworld game
+RimworldAPI is a mod that give you an API useable for your current rimworld game
 
-ARROM exposes a small REST API from inside RimWorld. The API listens on `http://localhost:18765/` by default once the
+RimworldAPI exposes a small REST API from inside RimWorld. The API listens on `http://localhost:18765/` by default once the
 game reaches the main menu. The port can be changed in the mod settings.
 
 ## Usage
 1. Start RimWorld with the mod enabled. When the main menu loads the API server will begin listening.
-2. The default address is `http://localhost:18765/`. You can change the port from the ARROM mod settings.
+2. The default address is `http://localhost:18765/`. You can change the port from the RimworldAPI mod settings.
 3. Use any HTTP client (curl, Postman, etc.) to call the endpoints.
 
 Example:

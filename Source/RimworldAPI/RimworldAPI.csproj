@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk" ToolsVersion="Current">
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
-    <AssemblyName>ARROM</AssemblyName>
-    <RootNamespace>ARROM</RootNamespace>
+    <AssemblyName>RimworldAPI</AssemblyName>
+    <RootNamespace>RimworldAPI</RootNamespace>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
@@ -33,9 +33,9 @@
     <PackageReference Include="UnlimitedHugs.Rimworld.HugsLib" Version="11.0.5" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ARROM_GameComponent.cs" />
-    <Compile Include="ARROM_Mod.cs" />
+    <Compile Include="RimworldAPI_GameComponent.cs" />
+    <Compile Include="RimworldAPI_Mod.cs" />
     <Compile Include="Server.cs" />
-    <Compile Include="ARROM_Settings.cs" />
+    <Compile Include="RimworldAPI_Settings.cs" />
   </ItemGroup>
 </Project>

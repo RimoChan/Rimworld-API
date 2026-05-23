@@ -1,12 +1,12 @@
 using Verse;
 using System.Threading;
 
-namespace ARROM
+namespace RimworldAPI
 {
-    public class ARROM_GameComponent : GameComponent
+    public class RimworldAPI_GameComponent : GameComponent
     {
 
-        public ARROM_GameComponent(Game _) : base()
+        public RimworldAPI_GameComponent(Game _) : base()
         {
             // void
         }

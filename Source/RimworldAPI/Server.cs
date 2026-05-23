@@ -11,7 +11,7 @@ using RimWorld;
 using Verse;
 using Verse.AI;
 
-namespace ARROM {
+namespace RimworldAPI {
     public class ApiHandler {
         public static readonly object TickSyncLock = new object();
 
@@ -499,7 +499,7 @@ namespace ARROM {
     public static class Server
     {
         private static HttpListener _listener;
-        private static int Port => ARROM_Mod.Settings?.serverPort ?? 18765;
+        private static int Port => RimworldAPI_Mod.Settings?.serverPort ?? 18765;
         private static readonly string Prefix = $"http://+:{Port}/";
         private static Thread _thread;
         private static readonly ApiHandler _apiHandler = new ApiHandler();
@@ -515,7 +515,7 @@ namespace ARROM {
 
             _thread = new Thread(Loop) { IsBackground = true };
             _thread.Start();
-            //Log.Message($"[ARROM] REST API listening on {Prefix}");
+            //Log.Message($"[RimworldAPI] REST API listening on {Prefix}");
         }
 
         public static void Stop() {
@@ -532,7 +532,7 @@ namespace ARROM {
                     假Handle(ctx);
                 }
                 catch (Exception ex) {
-                    Log.Error($"[ARROM] HttpListener error: {ex}");
+                    Log.Error($"[RimworldAPI] HttpListener error: {ex}");
                 }
             }
         }
