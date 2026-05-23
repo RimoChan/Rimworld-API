@@ -9,11 +9,15 @@
 
 ## 使用方式
 
-只要挂上这个mod，就会在进入游戏后在`18765`端口启动1个HTTP server，然后用请求打它就可以了。
+下载方式有2种:
+- 在[steam 创意工坊](https://steamcommunity.com/sharedfiles/filedetails/?id=3731156014)直接订阅。
+- 从[GitHub Releases](https://github.com/RimoChan/Rimworld-API/releases/)下载`RimworldAPI.zip`，然后解压到本地的Mods文件夹。
 
-有1个demo视频:
+挂上之后，只要进入游戏，就会自动在`18765`端口启动1个HTTP server，然后用请求打它就可以了。
 
-<video src=">赠品\demo.mp4"></video>
+可以看这个demo视频，里面所有的操作都是通过API做的:
+
+<video src="https://github.com/user-attachments/assets/23cf45dd-988a-4189-98ef-3f771a8d8f46"></video>
 
 
 ## 接口
@@ -23,7 +27,7 @@
 具体接口有哪些可以看[这个文档](API.md)。
 
 
-## 一些典型的用法
+## 1些典型的用法
 
 列举1些我自己常用的逻辑，大家可以集思广益:
 
