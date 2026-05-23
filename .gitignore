@@ -1,6 +1,7 @@
 /.vs
-/Source/ARROM/.vs
-/Source/ARROM/bin
-/Source/ARROM/obj
-Source/ARROM/ARROM.sln
-Dist/ARROM.zip
+/Source/RimworldAPI/.vs
+/Source/RimworldAPI/bin
+/Source/RimworldAPI/obj
+Source/RimworldAPI/RimworldAPI.sln
+*.pyc
+*.code-workspace
