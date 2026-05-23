@@ -491,6 +491,18 @@ namespace RimworldAPI {
             return DefDatabase<RecipeDef>.AllDefs.Select(i => i.defName).ToList();
         }
 
+        public object bill_repeat_mode_def() {
+            return DefDatabase<BillRepeatModeDef>.AllDefs.Select(i => i.defName);
+        }
+
+        public object thing_category_def() {
+            return DefDatabase<ThingCategoryDef>.AllDefs.Select(i => i.defName);
+        }
+
+        public object job_def() {
+            return DefDatabase<JobDef>.AllDefs.Select(i => i.defName);
+        }
+
         public string Ping() {
             return "Pong!";
         }
