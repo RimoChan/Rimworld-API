@@ -11,9 +11,9 @@
 
 只要挂上这个mod，就会在进入游戏后在`18765`端口启动1个HTTP server，然后用请求打它就可以了。
 
-有1个demo视频:
+可以看这个demo视频，里面所有的操作都是通过API做的:
 
-<video src=">赠品\demo.mp4"></video>
+<video src="https://github.com/user-attachments/assets/23cf45dd-988a-4189-98ef-3f771a8d8f46"></video>
 
 
 ## 接口
