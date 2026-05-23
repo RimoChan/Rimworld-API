@@ -143,13 +143,13 @@ namespace ARROM {
             p.health.surgeryBills.AddBill(new Bill_Medical(DefDatabase<RecipeDef>.GetNamed(recipe), null) { Part = bodyPart });
         }
 
-        public string input_create_zone(string label, int x, int y) {
+        public int input_create_zone(string label, int x, int y) {
             Map map = Find.CurrentMap;
             Zone_Stockpile zone = new Zone_Stockpile(0, map.zoneManager);
             zone.label = label;
             zone.AddCell(new IntVec3(x, 0, y));
             map.zoneManager.RegisterZone(zone);
-            return $"\"{zone.ID}\"";
+            return zone.ID;
         }
 
         public void input_zone_add_cell(int zone_id, int x, int y) {
@@ -499,7 +499,7 @@ namespace ARROM {
     public static class Server
     {
         private static HttpListener _listener;
-        private static int Port => ARROM_Mod.Settings?.serverPort ?? 8765;
+        private static int Port => ARROM_Mod.Settings?.serverPort ?? 18765;
         private static readonly string Prefix = $"http://+:{Port}/";
         private static Thread _thread;
         private static readonly ApiHandler _apiHandler = new ApiHandler();
