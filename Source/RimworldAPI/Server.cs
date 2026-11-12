@@ -308,6 +308,23 @@ namespace RimworldAPI {
             return Find.CurrentMap.zoneManager.AllZones.Select(z => new { id = z.ID, label = z.label });
         }
 
+        public object rooms() {
+            var map = Find.CurrentMap;
+            if (map == null) return new List<object>();
+            return map.regionGrid.AllRooms.Select(r => new {
+                id = r.ID,
+                role = r.Role?.defName,
+                role_label = r.Role?.label,
+                temperature = r.Temperature,
+                cell_count = r.CellCount,
+                proper_room = r.ProperRoom,
+                is_prison_cell = r.IsPrisonCell,
+                uses_outdoor_temperature = r.UsesOutdoorTemperature,
+                open_roof_count = r.OpenRoofCount,
+                owners = r.Owners?.Select(p => p.thingIDNumber).ToList() ?? new List<int>()
+            }).ToList();
+        }
+
         public object prisoners() {
             var ps = Find.CurrentMap?.mapPawns?.PrisonersOfColony.Select(PawnToObject).ToList();
             return ps;

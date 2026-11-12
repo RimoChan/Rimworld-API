@@ -21,6 +21,10 @@ http://localhost:18765/colonists?detail=true
 - 获取当前地图所有的区域列表。
 - 输出: `list`。
 
+**rooms**
+- 获取当前地图所有的房间列表。
+- 输出: `list`。
+
 **prisoners**
 - 获取殖民地所有囚犯的信息。
 - 输出: `list`。
