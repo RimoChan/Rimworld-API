@@ -163,9 +163,9 @@ namespace RimworldAPI {
             p.health.surgeryBills.AddBill(new Bill_Medical(DefDatabase<RecipeDef>.GetNamed(recipe), null) { Part = bodyPart });
         }
 
-        public int input_create_zone(string label, int x, int y) {
+        public int input_create_zone(string label, int x, int y, string type = "Zone_Stockpile") {
             Map map = Find.CurrentMap;
-            Zone_Stockpile zone = new Zone_Stockpile(0, map.zoneManager);
+            Zone zone = type == "Zone_Stockpile" ? new Zone_Stockpile(0, map.zoneManager) : (Zone)Activator.CreateInstance(GenTypes.GetTypeInAnyAssembly(type), map.zoneManager);
             zone.label = label;
             zone.AddCell(new IntVec3(x, 0, y));
             map.zoneManager.RegisterZone(zone);
@@ -174,6 +174,12 @@ namespace RimworldAPI {
 
         public void input_zone_add_cell(int zone_id, int x, int y) {
             get_zone(zone_id).AddCell(new IntVec3(x, 0, y));
+        }
+
+        public void input_growing_zone_set_allow(int zone_id, bool allow_sow, bool allow_harvest) {
+            Zone_Growing zone = get_zone(zone_id) as Zone_Growing;
+            zone.allowSow = allow_sow;
+            zone.allowCut = allow_harvest;
         }
 
         public void input_stockpile_zone_disallow_all(int zone_id) {
@@ -196,12 +202,19 @@ namespace RimworldAPI {
         }
 
         public void input_pawn_interact_biosculpter(int pawn_id, int target_id, string cycle_key) {
-            // Available cycle_key: medic,bioregeneration,ageReversal,pleasure
             Pawn p = get_pawn(pawn_id);
             Thing target = get_thing(target_id);
             Job j = JobMaker.MakeJob(JobDefOf.EnterBiosculpterPod, target);
             j.biosculpterCycleKey = cycle_key;
             p.jobs.TryTakeOrderedJob(j);
+        }
+
+        public void input_change_mech_control_group(int mech_id, int group_index) {
+            Pawn mech = get_pawn(mech_id);
+            Pawn overseer = mech.GetOverseer();
+            Pawn_MechanitorTracker mechanitor = overseer.mechanitor;
+            MechanitorControlGroup targetGroup = mechanitor.controlGroups[group_index];
+            targetGroup.Assign(mech);
         }
 
         public void input_message(string text) {
@@ -326,7 +339,21 @@ namespace RimworldAPI {
         }
 
         public object zones() {
-            return Find.CurrentMap.zoneManager.AllZones.Select(z => new { id = z.ID, label = z.label });
+            return Find.CurrentMap.zoneManager.AllZones.Select(z => {
+                var stockpile = z as Zone_Stockpile;
+                var growing = z as Zone_Growing;
+                return new {
+                    id = z.ID,
+                    label = z.label,
+                    type = z.GetType().Name,
+                    cellCount = z.Cells.Count,
+                    position = new { x = z.Position.x, z = z.Position.z },
+                    priority = stockpile?.settings?.Priority.ToString(),
+                    plantToGrow = growing?.GetPlantDefToGrow()?.defName,
+                    allowSow = growing?.allowSow,
+                    allowCut = growing?.allowCut,
+                };
+            });
         }
 
         public object rooms() {

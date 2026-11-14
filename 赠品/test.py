@@ -79,10 +79,21 @@ def 测试拿枪():
     assert c.colonist(id=p['id'])['currentJob'] == 'Equip'
 
 
+def 测试种地():
+    x, y = _找1块空地(5)
+    zid = c.input_create_zone(label='菜地', x=x+1, y=y, type='Zone_Growing')
+    c.input_zone_add_cell(zone_id=zid, x=x+2, y=y)
+    c.input_growing_zone_set_allow(zone_id=zid, allow_sow=False, allow_harvest=False)
+    z = [i for i in c.zones() if i['id'] == zid][0]
+    assert z['label'] == '菜地' and z['type'] == 'Zone_Growing' and z['cellCount'] == 2
+    assert not z['allowSow'] and not z['allowCut']
+
+
 测试禁用和取消禁用()
 测试放建筑()
 测试征召()
 测试拿枪()
+测试种地()
 
 
 print('通过！')

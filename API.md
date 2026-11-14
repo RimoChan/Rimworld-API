@@ -143,12 +143,13 @@ http://localhost:18765/colonists?detail=true
     - 这个body_part的名字是取决于本地化的，这很奇怪但我也没找到更好的实现方式，所以先这样吧。
 
 **input_create_zone**
-- 在指定坐标创建1个新的储存区。
-- 输入: `string label, int x, int y`
-    - label: 储存区的名称。
+- 在指定坐标创建1个新的区域。
+- 输入: `string label, int x, int y, string type = "Zone_Stockpile"`
+    - label: 区域的名称。
     - x和y: 起始单元格坐标。
-    - 样例: `input_create_zone(label='生鲜存储', x=100, y=100)`
-- 输出: 那个储存区的ID。
+    - type: 区域的类型<sub>(可选，默认为`Zone_Stockpile`，种植区可传`Zone_Growing`)</sub>。
+    - 样例: `input_create_zone(label='生鲜存储', x=100, y=100, type='Zone_Stockpile')`
+- 输出: 那个区域的ID。
 
 **input_zone_add_cell**
 - 为已存在的区域添加1个单元格。
@@ -156,6 +157,14 @@ http://localhost:18765/colonists?detail=true
     - zone_id: 区域的ID。
     - x和y: 要添加的单元格坐标。
     - 样例: `input_zone_add_cell(zone_id=1, x=101, y=100)`
+
+**input_growing_zone_set_allow**
+- 设置指定种植区是否允许播种和收获。
+- 输入: `int zone_id, bool allow_sow, bool allow_harvest`
+    - zone_id: 种植区的 ID。
+    - allow_sow: 是否允许播种。
+    - allow_harvest: 是否允许收获。
+    - 样例: `input_growing_zone_set_allow(zone_id=1, allow_sow=False, allow_harvest=True)`
 
 **input_stockpile_zone_disallow_all**
 - 清楚指定储存区的所有允许物品。
