@@ -18,3 +18,16 @@ class Client:
             logging.info(f'[{k}]latency: {time.time()-t}')
             return r.json()
         return f
+
+    def wait_for_start(self, timeout=60):
+        n = timeout//2+1
+        for i in range(n):
+            try:
+                self.ping()
+            except requests.exceptions.ConnectionError:
+                if i == n-1:
+                    raise
+                print('游戏还没起来，等1下')
+                time.sleep(2)
+            else:
+                return

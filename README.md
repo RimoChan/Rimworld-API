@@ -40,9 +40,23 @@
 
 ## 开发
 
-因为我不喜欢Visual Studio，所以是直接调用`dotnet build`编译的，编译脚本在`Source\RimworldAPI\编译.py`。
+因为我不喜欢Visual Studio，所以是直接调用`dotnet build`编译的。
 
-编译成功后，建议做1下集成测试，测试脚本在`赠品\test.py`。使用方法是进入RimWorld的开发者模式，然后开1局快速测试<sub>(就是点开直接出现3个人的那个按钮)</sub>，然后运行`test.py`，能通过就可以了。
+先把steam打开，不然游戏启动不起来。
+
+如果你要手动测试，就执行这个`python ./赠品/编译.py`，这个命令会找steam的rimworld路径，编译完自动放进mod文件夹。
+
+或者你也可以用下面这条命令，会执行1条龙服务，就是编译、放进mod文件夹、杀进程<sub>(如果有)</sub>、重启、等游戏启动、跑测试脚本，能跑通就说明没问题了。
+
+```bat
+python ./赠品/编译并重启.py -quicktest && python -c "from 赠品.client import Client;Client().wait_for_start(timeout=60)" && python ./赠品/test.py
+```
+
+powershell的话要改成这样——
+
+```powershell
+python ./赠品/编译并重启.py -quicktest; if ($?) { python -c "from 赠品.client import Client;Client().wait_for_start(timeout=60)" }; if ($?) { python ./赠品/test.py }
+```
 
 
 ## 结束

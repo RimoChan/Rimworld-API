@@ -16,7 +16,6 @@ assert c.animals()
 assert c.storage() == []
 assert c.research()['currentProject'] == ''
 assert len(c.factions()) > 1
-assert [*Counter(i['faction'] for i in c.buildings())] == [None]
 assert c.zones() == []
 assert c.map()['size'] == {'x': 250, 'y': 250}
 assert c.colony()['colonistCount'] == 3

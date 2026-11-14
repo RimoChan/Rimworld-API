@@ -5,3 +5,4 @@
 Source/RimworldAPI/RimworldAPI.sln
 *.pyc
 *.code-workspace
+TestEnv
