@@ -209,6 +209,11 @@ namespace RimworldAPI {
             p.jobs.TryTakeOrderedJob(j);
         }
 
+        public void input_pawn_goto(int pawn_id, int x, int y) {
+            Pawn p = get_pawn(pawn_id);
+            p.jobs.TryTakeOrderedJob(JobMaker.MakeJob(JobDefOf.Goto, new IntVec3(x, 0, y)));
+        }
+
         public void input_change_mech_control_group(int mech_id, int group_index) {
             Pawn mech = get_pawn(mech_id);
             Pawn overseer = mech.GetOverseer();

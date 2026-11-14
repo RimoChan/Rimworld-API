@@ -89,11 +89,19 @@ def 测试种地():
     assert not z['allowSow'] and not z['allowCut']
 
 
+def 测试移动():
+    x, y = _找1块空地(5)
+    p = c.colonists()[1]
+    c.input_pawn_goto(pawn_id=p['id'], x=x, y=y)
+    assert c.colonist(id=p['id'])['currentJob'] == 'Goto'
+
+
 测试禁用和取消禁用()
 测试放建筑()
 测试征召()
 测试拿枪()
 测试种地()
+测试移动()
 
 
 print('通过！')

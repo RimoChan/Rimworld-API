@@ -206,6 +206,13 @@ http://localhost:18765/colonists?detail=true
     - cycle_key: 循环类型。可选值为: `medic, bioregeneration, ageReversal, pleasure`。
     - 样例: `input_pawn_interact_biosculpter(pawn_id=123, target_id=456, cycle_key='medic')`
 
+**input_pawn_goto**
+- 命令小人走到指定坐标。
+- 输入: `int pawn_id, int x, int y`
+    - pawn_id: 小人ID。
+    - x和y: 目标地点的坐标。
+    - 样例: `input_pawn_goto(pawn_id=123, x=100, y=100)`
+
 **input_message**
 - 发送1条提示信息<sub>(是屏幕左上角的那个)</sub>
 - 输入: `string text`
