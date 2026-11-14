@@ -204,16 +204,16 @@ http://localhost:18765/colonists?detail=true
     - 样例: `input_message(text='自动化脚本已连接')`
 
 **input_command**
-- 让小人放技能。
-- 输入: `int id, string label, int target_id`
-    - id: 小人ID。
-    - label: 命令的名称。
-    - target_id: 目标的ID<sub>(如果不取对象就传0)</sub>。
-    - 样例: `input_command(id=123, label='转化钢铁', target_id=9)`
+- 触发指定物体上的命令，比如征召。
+- 输入: `int id, string key, int target_id = 0`
+    - id: 物体的ID。
+    - key: 命令的 key。
+    - target_id: 目标的ID<sub>(可选，默认为0)</sub>。
+    - 样例:
+        - 小人征召: `input_command(id=123, key='Draft')`
+        - 基因提取器进人: `input_command(id=999, key='InsertPawn', target_id=123)`
 - 备注
-    - label是取决于本地化的，还是很奇怪但我也没找到更好的实现方式，所以先这样吧。
-    - 如果不知道label怎么填，可以用`colonists(detail=true)`，看那个人身上的`commands`。
-        - 远程射击命令没有Label，这种情况下用commands的type代替label<sub>(就是填字符串'Verse.Command_VerbTarget`)</sub>。
+    - 如果不知道key怎么填，可以用`colonists(detail=true)`，看那个人身上的`commands`里的`key`字段。
 
 **input_set_forbidden**
 - 允许或禁用指定的物品。

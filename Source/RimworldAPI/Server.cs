@@ -47,6 +47,16 @@ namespace RimworldAPI {
             return Find.CurrentMap.zoneManager.AllZones.FirstOrDefault(z => z.ID == id) ?? throw new Exception("zone not found.");
         }
 
+        public object get_commands(Thing t) {
+            var res = new List<object>();
+            try {
+                foreach (var m in t.GetGizmos().OfType<Command>().Where(m => !(m is Designator)))
+                    res.Add(new { key = get_command_key(m), type = m.GetType().FullName, label = m.Label });
+            }
+            catch { }   // 有些t.GetGizmos会出错，只能这样catch了
+            return res;
+        }
+
         public object convert_thing(Thing t, object extra) {
             var d = new Dictionary<string, object> {
                 ["id"] = t.thingIDNumber,
@@ -55,7 +65,8 @@ namespace RimworldAPI {
                 ["fullname"] = (t as Pawn)?.Name?.ToStringFull ?? t.LabelCap,
                 ["def"] = t.def,
                 ["position"] = t.Position,
-                ["faction"] = t.Faction?.ToString()
+                ["faction"] = t.Faction?.ToString(),
+                ["commands"] = get_commands(t),
             };
             foreach (var prop in extra.GetType().GetProperties())
                 d[prop.Name] = prop.GetValue(extra);
@@ -80,7 +91,6 @@ namespace RimworldAPI {
 
         public object PawnToDetailedObject(Pawn p) {
             return convert_thing(p, new {
-                commands = p.GetGizmos().Select(m => new { type = m.GetType().FullName, label = (m as Command)?.Label }),
                 backstory = p.story?.Title ?? "",
                 gender = p.gender.ToString(),
                 age = p.ageTracker?.AgeBiologicalYears ?? -1,
@@ -198,18 +208,39 @@ namespace RimworldAPI {
             Messages.Message(text, MessageTypeDefOf.NeutralEvent, true);
         }
 
-        public void input_command(int id, string label, int target_id) {
-            Pawn p = get_pawn(id);
+        public string get_command_key(Gizmo g) {
+            if (g is Command_Ability ga && !string.IsNullOrEmpty(ga.Ability?.def?.defName))
+                return ga.Ability.def.defName;
+            if (g is Command_VerbTarget gv && gv.verb != null)
+                return gv.verb.GetType().Name;
+            if (g is Command c && !string.IsNullOrEmpty(c.icon?.name))
+                return c.icon.name;
+            return g.GetType().FullName;
+        }
+
+        public void input_command(int id, string key, int target_id = 0) {
+            Thing p = get_thing(id);
             Thing target_p = target_id != 0 ? get_thing(target_id) : null;
             foreach (Gizmo g in p.GetGizmos()) {
-                if ((g as Command)?.Label != label && g.GetType().FullName != label) // 开火命令没有label，只能这样代替1下了
+                if (get_command_key(g) != key)
                     continue;
+                if (g.Disabled)
+                    throw new Exception(string.IsNullOrEmpty(g.disabledReason) ? "command disabled." : g.disabledReason);
                 switch (g) {
                     case Command_Toggle g1:
                         g1.toggleAction();
                         return;
                     case Command_Action g2:
                         g2.action();
+                        if (target_p != null) {
+                            FloatMenu menu = Find.WindowStack.WindowOfType<FloatMenu>() ?? throw new Exception("menu not found.");
+                            Find.WindowStack.TryRemove(menu, false);
+                            var options = (List<FloatMenuOption>)typeof(FloatMenu).GetField("options", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(menu);
+                            FloatMenuOption opt = options.FirstOrDefault(o => o.iconThing == target_p || o.revalidateClickTarget == target_p) ?? throw new Exception("target not found.");
+                            if (opt.Disabled)
+                                throw new Exception(opt.Label);
+                            opt.action();
+                        }
                         return;
                     case Command_VerbTarget g3:
                         g3.verb.TryStartCastOn(target_p);
@@ -220,6 +251,9 @@ namespace RimworldAPI {
                             throw new Exception("cannot cast.");
                         LocalTargetInfo l = new LocalTargetInfo(target_p);
                         ability.QueueCastingJob(l, l);
+                        return;
+                    case Command_Target g5:
+                        g5.action(new LocalTargetInfo(target_p));
                         return;
                     default:
                         throw new Exception("command type error.");
@@ -433,8 +467,8 @@ namespace RimworldAPI {
 
         public object buildings() {
             return Find.CurrentMap.listerThings.AllThings.Where(t => t.def.building != null).Select(b => convert_thing(b, new {
-                material = b.Stuff, // 新增：建筑的材料 (例如: "WoodLog", "Steel")。如果建筑没有自选材料则为 null
-                rotation = b.Rotation.AsInt, // 新增：建筑的朝向 (0: 北, 1: 东, 2: 南, 3: 西)
+                material = b.Stuff,
+                rotation = b.Rotation.AsInt,
                 is_forbidden = b.IsForbidden(Faction.OfPlayer),
             }));
         }
@@ -465,8 +499,8 @@ namespace RimworldAPI {
             return (Find.CurrentMap?.mapPawns?.FreeColonists ?? Enumerable.Empty<Pawn>()).Select(p => new {
                 id = p.thingIDNumber,
                 name = p.Name.ToStringShort,
-                current = p.CurJob,
-                queue = p.jobs?.jobQueue?.Select(q => q.job)
+                current = p.CurJob?.def,
+                queue = p.jobs?.jobQueue?.Select(q => q.job?.def) ?? Enumerable.Empty<JobDef>()
             });
         }
 
@@ -511,14 +545,13 @@ namespace RimworldAPI {
 
         public static void Start() {
             if (_listener != null) return;
-
+            // GenTypes.GetTypeInAnyAssembly("HarmonyMod.Settings")?.GetField("noStacktraceCaching")?.SetValue(null, true);
             _listener = new HttpListener();
             _listener.Prefixes.Add(Prefix);
             _listener.Start();
 
             _thread = new Thread(Loop) { IsBackground = true };
             _thread.Start();
-            //Log.Message($"[RimworldAPI] REST API listening on {Prefix}");
         }
 
         public static void Stop() {

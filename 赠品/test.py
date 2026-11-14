@@ -60,8 +60,29 @@ def 测试放建筑():
     assert Counter(i['type'] for i in c.things())['RimWorld.Blueprint_Build'] == 3
 
 
+def 测试征召():
+    for p in c.colonists(detail=True):
+        assert all(cmd['key'] for cmd in p['commands'])
+        c.input_command(id=p['id'], key='Draft')
+        p2 = c.colonist(id=p['id'])
+        assert p2['isDrafted']
+        keys = [cmd['key'] for cmd in p2['commands']]
+        assert all(keys) and len(keys) == len(set(keys))
+        c.input_command(id=p['id'], key='Draft')
+        assert not c.colonist(id=p['id'])['isDrafted']
+
+
+def 测试拿枪():
+    gun = [t for t in c.things() if t['def'] == 'Gun_Revolver'][0]
+    p = c.colonists()[0]
+    c.input_pawn_interact(pawn_id=p['id'], target_id=gun['id'], job='Equip')
+    assert c.colonist(id=p['id'])['currentJob'] == 'Equip'
+
+
 测试禁用和取消禁用()
 测试放建筑()
+测试征召()
+测试拿枪()
 
 
 print('通过！')
