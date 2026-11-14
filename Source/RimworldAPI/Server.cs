@@ -12,116 +12,127 @@ using Verse;
 using Verse.AI;
 
 namespace RimworldAPI {
+    public class RimworldConverter : JsonConverter {
+        public override bool CanRead => false;
+
+        public override bool CanConvert(Type t) {
+            return t == typeof(IntVec3) || typeof(Def).IsAssignableFrom(t) || typeof(Hediff).IsAssignableFrom(t) || typeof(Job).IsAssignableFrom(t);
+        }
+
+        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) {
+            if (value is IntVec3 v) value = new { x = v.x, y = v.z };
+            else if (value is Def d) value = d.defName;
+            else if (value is Hediff h) value = new { def = h.def, part = h.Part?.Label, label = h.Label, severity = h.Severity };
+            else if (value is Job j) value = j.def;
+            serializer.Serialize(writer, value);
+        }
+
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer) {
+            throw new NotImplementedException();
+        }
+    }
+
     public class ApiHandler {
         public static readonly object TickSyncLock = new object();
 
         public Pawn get_pawn(int id) {
-            Pawn q = PawnsFinder.AllMaps_Spawned.FirstOrDefault(p => p.thingIDNumber == id);
-            if (q == null) {
-                throw new Exception($"pawn {id} not found.");
-            }
-            return q;
+            return PawnsFinder.AllMaps_Spawned.FirstOrDefault(p => p.thingIDNumber == id) ?? throw new Exception($"pawn {id} not found.");
         }
 
         public Thing get_thing(int id) {
-            var q = Find.CurrentMap.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == id);
-            if (q == null) {
-                throw new Exception($"thing {id} not found.");
-            }
-            return q;
+            return Find.CurrentMap.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == id) ?? throw new Exception($"thing {id} not found.");
         }
 
         public Zone get_zone(int id) {
-            Map map = Find.CurrentMap;
-            Zone zone = map.zoneManager.AllZones.FirstOrDefault(z => z.ID == id);
-            if (zone == null)
-                throw new Exception("zone not found.");
-            return zone;
+            return Find.CurrentMap.zoneManager.AllZones.FirstOrDefault(z => z.ID == id) ?? throw new Exception("zone not found.");
+        }
+
+        public object convert_thing(Thing t, object extra) {
+            var d = new Dictionary<string, object> {
+                ["id"] = t.thingIDNumber,
+                ["type"] = t.GetType().FullName,
+                ["name"] = (t as Pawn)?.Name?.ToStringShort ?? t.LabelShort,
+                ["fullname"] = (t as Pawn)?.Name?.ToStringFull ?? t.LabelCap,
+                ["def"] = t.def,
+                ["position"] = t.Position,
+                ["faction"] = t.Faction?.ToString()
+            };
+            foreach (var prop in extra.GetType().GetProperties())
+                d[prop.Name] = prop.GetValue(extra);
+            return d;
         }
 
         public object PawnToObject(Pawn p) {
-            return new {
-                id = p.thingIDNumber,
-                name = p.Name.ToStringShort,
+            return convert_thing(p, new {
                 age = p.ageTracker.AgeBiologicalYears,
                 gender = p.gender.ToString(),
-                position = new { x = p.Position.x, y = p.Position.z },
                 mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
                 health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
-                hediff = p.health?.hediffSet?.hediffs?.Select(x => new { part = x.Part?.Label, label = x.Label }).ToList(),
-                currentJob = p.CurJob?.def?.defName ?? "",
-                traits = p.story?.traits?.allTraits.Select(t => t.def.defName).ToList() ?? new List<string>(),
+                hediffs = p.health?.hediffSet?.hediffs,
+                currentJob = p.CurJob,
+                traits = p.story?.traits?.allTraits.Select(t => t.def) ?? Enumerable.Empty<TraitDef>(),
                 workPriorities = DefDatabase<WorkTypeDef>.AllDefs
-                    .Select(wt => new { workType = wt.defName, priority = p.workSettings.GetPriority(wt) })
+                    .Select(wt => new { workType = wt, priority = p.workSettings.GetPriority(wt) })
                     .Where(x => x.priority > 0)
                     .OrderBy(x => x.priority)
-                    .ToList()
-            };
+            });
         }
 
         public object PawnToDetailedObject(Pawn p) {
-            return new {
-                id = p.thingIDNumber,
+            return convert_thing(p, new {
                 commands = p.GetGizmos().Select(m => new { type = m.GetType().FullName, label = (m as Command)?.Label }),
-                name = p.Name.ToStringFull,
                 backstory = p.story?.Title ?? "",
                 gender = p.gender.ToString(),
                 age = p.ageTracker?.AgeBiologicalYears ?? -1,
-                lifeStage = p.ageTracker?.CurLifeStage?.defName ?? "",
+                lifeStage = p.ageTracker?.CurLifeStage,
                 mood = p.needs?.mood?.CurLevelPercentage * 100 ?? -1f,
                 comfort = p.GetStatValue(StatDefOf.Comfort, true),
-                needs = p.needs?.AllNeeds.Select(n => new { need = n.def.defName, level = n.CurLevelPercentage * 100 }).ToList(),
+                needs = p.needs?.AllNeeds.Select(n => new { need = n.def, level = n.CurLevelPercentage * 100 }),
                 health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
-                hediffs = p.health?.hediffSet?.hediffs.Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
-                visibleHediffs = p.health?.hediffSet?.hediffs.Where(h => h.Visible).Select(h => new { def = h.def.defName, severity = h.Severity }).ToList(),
+                hediffs = p.health?.hediffSet?.hediffs,
+                visibleHediffs = p.health?.hediffSet?.hediffs.Where(h => h.Visible),
                 bleedingRate = p.health?.hediffSet?.BleedRateTotal ?? 0f,
                 isDowned = p.Downed,
                 isDrafted = p.Drafted,
-                currentJob = p.CurJob?.def?.defName ?? "",
-                thoughts = p.needs?.mood?.thoughts?.memories?.Memories.Select(t => t.def.defName).ToList(),
-                skills = p.skills?.skills.Select(s => new { skill = s.def.defName, level = s.Level, passion = s.passion.ToString() }).ToList(),
-                equipment = p.equipment?.AllEquipmentListForReading.Select(eq => new { def = eq.def.defName, hitPoints = eq.HitPoints }).ToList(),
-                apparel = p.apparel?.WornApparel.Select(a => new { def = a.def.defName, hitPoints = a.HitPoints }).ToList(),
-                inventory = p.inventory?.innerContainer.Select(i => new { def = i.def.defName, count = i.stackCount }).ToList(),
+                currentJob = p.CurJob,
+                thoughts = p.needs?.mood?.thoughts?.memories?.Memories.Select(t => t.def),
+                skills = p.skills?.skills.Select(s => new { skill = s.def, level = s.Level, passion = s.passion.ToString() }),
+                equipment = p.equipment?.AllEquipmentListForReading.Select(eq => new { def = eq.def, hitPoints = eq.HitPoints }),
+                apparel = p.apparel?.WornApparel.Select(a => new { def = a.def, hitPoints = a.HitPoints }),
+                inventory = p.inventory?.innerContainer.Select(i => new { def = i.def, count = i.stackCount }),
                 assignedArea = p.playerSettings?.AreaRestrictionInPawnCurrentMap?.Label,
                 ownedRoom = p.ownership?.OwnedRoom?.ID ?? 0,
-                relations = p.relations?.DirectRelations.Select(r => new { def = r.def.defName, other = r.otherPawn?.thingIDNumber }).ToList()
-            };
+                relations = p.relations?.DirectRelations.Select(r => new { def = r.def, other = r.otherPawn?.thingIDNumber })
+            });
         }
 
         public object MechToObject(Pawn p) {
-            return new {
-                id = p.thingIDNumber,
-                name = p.Name?.ToStringShort ?? p.LabelShort,
-                kind = p.kindDef.defName,
-                position = new { x = p.Position.x, y = p.Position.z },
+            return convert_thing(p, new {
+                kind = p.kindDef,
                 health = p.health?.summaryHealth?.SummaryHealthPercent ?? 1f,
-                hediff = p.health?.hediffSet?.hediffs?.Select(x => new { part = x.Part?.Label, label = x.Label }).ToList(),
-                currentJob = p.CurJob?.def?.defName ?? "",
+                hediffs = p.health?.hediffSet?.hediffs,
+                currentJob = p.CurJob,
                 energy = p.needs?.energy?.CurLevelPercentage * 100 ?? -1f,
-            };
+            });
         }
 
         private List<Designator> allDesignatorsCache;
 
         public List<Designator> GetAllDesignators() {
             if (allDesignatorsCache == null) {
-                allDesignatorsCache = new List<Designator>();
-                foreach (DesignationCategoryDef categoryDef in DefDatabase<DesignationCategoryDef>.AllDefs)
-                    allDesignatorsCache.AddRange(categoryDef.ResolvedAllowedDesignators);
+                allDesignatorsCache = DefDatabase<DesignationCategoryDef>.AllDefs
+                    .SelectMany(c => c.ResolvedAllowedDesignators)
+                    .ToList();
             }
             return allDesignatorsCache;
         }
 
         private static Dictionary<string, int> CountThings(SlotGroup group) {
-            var dict = new Dictionary<string, int>();
-            if (group == null) return dict;
-            foreach (var thing in group.HeldThings) {
-                string def = thing.def?.defName;
-                if (string.IsNullOrEmpty(def)) continue;
-                dict[def] = dict.ContainsKey(def) ? dict[def] + thing.stackCount : thing.stackCount;
-            }
-            return dict;
+            if (group == null) return new Dictionary<string, int>();
+            return group.HeldThings
+                .Where(t => !string.IsNullOrEmpty(t.def?.defName))
+                .GroupBy(t => t.def.defName)
+                .ToDictionary(g => g.Key, g => g.Sum(t => t.stackCount));
         }
 
         public void input_blueprint(int x, int y, string thing, string stuff, string rotation) {
@@ -135,7 +146,6 @@ namespace RimworldAPI {
 
         public void input_surgery(int id, string recipe, string body_part) {
             Pawn p = get_pawn(id);
-
             BodyPartRecord bodyPart = p.health.hediffSet.GetNotMissingParts().FirstOrDefault(part => part.Label == body_part);
             if (bodyPart == null) {
                 throw new Exception($"Available are {string.Join(", ", p.health.hediffSet.GetNotMissingParts().Select(part => part.Label))}");
@@ -153,29 +163,19 @@ namespace RimworldAPI {
         }
 
         public void input_zone_add_cell(int zone_id, int x, int y) {
-            Map map = Find.CurrentMap;
-            Zone zone = map.zoneManager.AllZones.FirstOrDefault(z => z.ID == zone_id);
-            zone.AddCell(new IntVec3(x, 0, y));
+            get_zone(zone_id).AddCell(new IntVec3(x, 0, y));
         }
 
         public void input_stockpile_zone_disallow_all(int zone_id) {
-            Zone_Stockpile zone = get_zone(zone_id) as Zone_Stockpile;
-            StorageSettings settings = zone.settings;
-            ThingFilter filter = settings.filter;
-            filter.SetDisallowAll();
+            (get_zone(zone_id) as Zone_Stockpile).settings.filter.SetDisallowAll();
         }
 
         public void input_stockpile_zone_allow(int zone_id, string category) {
-            Zone_Stockpile zone = get_zone(zone_id) as Zone_Stockpile;
-            StorageSettings settings = zone.settings;
-            ThingFilter filter = settings.filter;
-            filter.SetAllow(DefDatabase<ThingCategoryDef>.GetNamed(category), true);
+            (get_zone(zone_id) as Zone_Stockpile).settings.filter.SetAllow(DefDatabase<ThingCategoryDef>.GetNamed(category), true);
         }
 
         public void input_stockpile_zone_priority(int zone_id, int priority) {
-            Zone_Stockpile zone = get_zone(zone_id) as Zone_Stockpile;
-            StorageSettings settings = zone.settings;
-            settings.Priority = (StoragePriority)priority;
+            (get_zone(zone_id) as Zone_Stockpile).settings.Priority = (StoragePriority)priority;
         }
 
         public void input_pawn_interact(int pawn_id, int target_id, string job) {
@@ -200,34 +200,30 @@ namespace RimworldAPI {
 
         public void input_command(int id, string label, int target_id) {
             Pawn p = get_pawn(id);
-            Thing target_p = null;
-            if (target_id != 0)
-                target_p = get_thing(target_id);
+            Thing target_p = target_id != 0 ? get_thing(target_id) : null;
             foreach (Gizmo g in p.GetGizmos()) {
-                if ((g as Command)?.Label != label && g.GetType().FullName != label)    // 开火命令没有label，只能这样代替1下了
+                if ((g as Command)?.Label != label && g.GetType().FullName != label) // 开火命令没有label，只能这样代替1下了
                     continue;
-                if (g is Command_Toggle g1) {
-                    g1.toggleAction();
-                    return;
+                switch (g) {
+                    case Command_Toggle g1:
+                        g1.toggleAction();
+                        return;
+                    case Command_Action g2:
+                        g2.action();
+                        return;
+                    case Command_VerbTarget g3:
+                        g3.verb.TryStartCastOn(target_p);
+                        return;
+                    case Command_Ability g4:
+                        Ability ability = g4.Ability;
+                        if (!ability.CanCast)
+                            throw new Exception("cannot cast.");
+                        LocalTargetInfo l = new LocalTargetInfo(target_p);
+                        ability.QueueCastingJob(l, l);
+                        return;
+                    default:
+                        throw new Exception("command type error.");
                 }
-                if (g is Command_Action g2) {
-                    g2.action();
-                    return;
-                }
-                if (g is Command_VerbTarget g3) {
-                    g3.verb.TryStartCastOn(target_p);
-                    return;
-                }
-                if (g is Command_Ability g4) {
-                    Ability ability = g4.Ability;
-                    LocalTargetInfo l = new LocalTargetInfo(target_p);
-                    if (!ability.CanCast) {
-                        throw new Exception("cannot cast.");
-                    }
-                    ability.QueueCastingJob(l, l);
-                    return;
-                }
-                throw new Exception("command type error.");
             }
             throw new Exception("command not found.");
         }
@@ -252,9 +248,8 @@ namespace RimworldAPI {
             dr.DesignateThing(target);
         }
 
-        public void input_remove_all_designation(int id){
-            Thing target = get_thing(id);
-            Find.CurrentMap.designationManager.RemoveAllDesignationsOn(target);
+        public void input_remove_all_designation(int id) {
+            Find.CurrentMap.designationManager.RemoveAllDesignationsOn(get_thing(id));
         }
 
         public void input_production_recipe(int id, string recipe, string repeat_mode, int count) {
@@ -266,44 +261,36 @@ namespace RimworldAPI {
             table.billStack.AddBill(bill);
         }
 
-
         #region Data Retrieval (Object Returns)
 
         public object biosculpter_pods() {
+            var field = typeof(CompBiosculpterPod).GetField("biotunedTo", BindingFlags.NonPublic | BindingFlags.Instance);
             return Find.CurrentMap.listerThings.AllThings.Where(t => t.def?.defName == "BiosculpterPod").Select(b => {
                 CompBiosculpterPod pod = b.TryGetComp<CompBiosculpterPod>();
-                Pawn biotunedTo = pod.GetType().GetField("biotunedTo", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(pod) as Pawn;
-                return new {
-                    id=b.thingIDNumber,
-                    occupant=pod.Occupant?.thingIDNumber,
-                    biotuned_to=biotunedTo?.thingIDNumber,
-                    queued_pawn=pod.queuedPawn?.thingIDNumber,
-                    current_cycle=pod.CurrentCycle?.Props?.key,
-                    state=pod.State.ToString(),
-                };
+                Pawn biotunedTo = field.GetValue(pod) as Pawn;
+                return convert_thing(b, new {
+                    occupant = pod.Occupant?.thingIDNumber,
+                    biotuned_to = biotunedTo?.thingIDNumber,
+                    queued_pawn = pod.queuedPawn?.thingIDNumber,
+                    current_cycle = pod.CurrentCycle?.Props?.key,
+                    state = pod.State.ToString(),
+                });
             });
         }
 
         public object get_production_recipe(int id) {
-            Building_WorkTable bg = get_thing(id) as Building_WorkTable;
-            return bg.BillStack.Bills.Select(b => new {
-                recipe=b.recipe.defName,
-                suspended=b.suspended,
+            return (get_thing(id) as Building_WorkTable).BillStack.Bills.Select(b => new {
+                recipe = b.recipe,
+                suspended = b.suspended,
             });
         }
 
         public object things() {
-            var result = Find.CurrentMap.listerThings.AllThings.Select(p => new {
-                    id = p.thingIDNumber,
-                    type = p.GetType().FullName,
-                    def = p.def?.defName,
-                    position = new { x = p.Position.x, y = p.Position.z },
-                    is_forbidden = p.IsForbidden(Faction.OfPlayer),
-                }
-            ).ToList();
-            return result;
+            return Find.CurrentMap.listerThings.AllThings.Select(p => convert_thing(p, new {
+                is_forbidden = p.IsForbidden(Faction.OfPlayer),
+            }));
         }
-        
+
         public object zones() {
             return Find.CurrentMap.zoneManager.AllZones.Select(z => new { id = z.ID, label = z.label });
         }
@@ -313,7 +300,7 @@ namespace RimworldAPI {
             if (map == null) return new List<object>();
             return map.regionGrid.AllRooms.Select(r => new {
                 id = r.ID,
-                role = r.Role?.defName,
+                role = r.Role,
                 role_label = r.Role?.label,
                 temperature = r.Temperature,
                 cell_count = r.CellCount,
@@ -321,21 +308,18 @@ namespace RimworldAPI {
                 is_prison_cell = r.IsPrisonCell,
                 uses_outdoor_temperature = r.UsesOutdoorTemperature,
                 open_roof_count = r.OpenRoofCount,
-                owners = r.Owners?.Select(p => p.thingIDNumber).ToList() ?? new List<int>()
-            }).ToList();
+                owners = r.Owners?.Select(p => p.thingIDNumber)
+            });
         }
 
         public object prisoners() {
-            var ps = Find.CurrentMap?.mapPawns?.PrisonersOfColony.Select(PawnToObject).ToList();
-            return ps;
+            return Find.CurrentMap?.mapPawns?.PrisonersOfColony.Select(PawnToObject);
         }
 
         public object mechanoids() {
-            var mechs = Find.CurrentMap?.mapPawns?.PawnsInFaction(Faction.OfPlayer)
+            return Find.CurrentMap?.mapPawns?.PawnsInFaction(Faction.OfPlayer)
                 ?.Where(p => p.RaceProps.IsMechanoid)
-                .Select(MechToObject)
-                .ToList();
-            return mechs;
+                .Select(MechToObject);
         }
 
         public object colony() {
@@ -347,23 +331,22 @@ namespace RimworldAPI {
             };
         }
 
-        public object letters() => Find.LetterStack?.LettersListForReading.Select(l => new {
-            label = l.GetType().GetProperty("LabelCap")?.GetValue(l)?.ToString(),
-            type = l.def?.letterClass?.ToString(),
-            arrivalTime = l.arrivalTime
-        }).ToList();
+        public object letters() {
+            return Find.LetterStack?.LettersListForReading.Select(l => new {
+                label = l.Label.ToString(),
+                type = l.def?.letterClass?.ToString(),
+                arrivalTime = l.arrivalTime
+            });
+        }
 
         public object colonists(bool detail = false) {
             var pawns = Find.CurrentMap?.mapPawns?.FreeColonists;
             if (pawns == null) return new List<object>();
-            return detail 
-                ? pawns.Select(PawnToDetailedObject).ToList() 
-                : pawns.Select(PawnToObject).ToList();
+            return detail ? pawns.Select(PawnToDetailedObject) : pawns.Select(PawnToObject);
         }
 
         public object colonist(int id) {
-            Pawn p = get_pawn(id);
-            return PawnToDetailedObject(p);
+            return PawnToDetailedObject(get_pawn(id));
         }
 
         public object map_tiles() {
@@ -381,72 +364,58 @@ namespace RimworldAPI {
             IntVec3 cell = new IntVec3(x, 0, y);
             if (map == null || !cell.InBounds(map)) return new { };
             return new {
-                terrain = map.terrainGrid?.TerrainAt(cell)?.defName,
+                terrain = map.terrainGrid?.TerrainAt(cell),
                 zone = map.zoneManager?.ZoneAt(cell)?.label,
-                things = map.thingGrid?.ThingsListAt(cell)?.Select(t => t.def?.defName).ToList() ?? new List<string>()
+                things = map.thingGrid?.ThingsListAt(cell)?.Select(t => t.def).ToList() ?? new List<ThingDef>()
             };
         }
 
-
         public object animals() {
-            var animals = Find
-                .CurrentMap?.mapPawns?.AllPawns.Where(p => p.RaceProps?.Animal == true)
-                .Select(p => new {
-                    id = p.thingIDNumber,
-                    name = p.LabelShortCap,
-                    def = p.def?.defName,
-                    faction = p.Faction?.ToString(),
-                    position = new { x = p.Position.x, y = p.Position.z },
-                    trainer = p
-                        .relations?.DirectRelations.Where(r => r.def == PawnRelationDefOf.Bond)
+            var getSteps = typeof(Pawn_TrainingTracker).GetMethod("GetSteps", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            return Find.CurrentMap?.mapPawns?.AllPawns
+                .Where(p => p.RaceProps?.Animal == true)
+                .Select(p => convert_thing(p, new {
+                    trainer = p.relations?.DirectRelations
+                        .Where(r => r.def == PawnRelationDefOf.Bond)
                         .Select(r => r.otherPawn?.thingIDNumber)
                         .FirstOrDefault(),
                     trainings = DefDatabase<TrainableDef>.AllDefsListForReading.ToDictionary(
                         td => td.defName,
-                        td => {
-                            if (p.training == null)
-                                return 0;
-                            var mi = typeof(Pawn_TrainingTracker).GetMethod(
-                                "GetSteps",
-                                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public
-                            );
-                            return mi != null ? (int)mi.Invoke(p.training, new object[] { td }) : 0;
-                        }
+                        td => p.training != null && getSteps != null ? (int)getSteps.Invoke(p.training, new object[] { td }) : 0
                     ),
                     pregnant = p.health?.hediffSet?.HasHediff(HediffDefOf.Pregnant) ?? false,
-                })
-                .ToList();
-
-            return animals;
+                }));
         }
 
         public object storage_detail() {
-            var storages = new List<object>();
-            foreach (var zone in Find.CurrentMap.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>())
-                storages.Add(new { name = zone.label, items = zone?.slotGroup.HeldThings.Select(t => new { id = t.thingIDNumber, def = t.def?.defName, stack_count = t.stackCount }) });
-            foreach (var building in Find.CurrentMap.listerBuildings?.allBuildingsColonist?.OfType<Building_Storage>() ?? Enumerable.Empty<Building_Storage>())
-                storages.Add(new { name = building.LabelCap, items = CountThings(building?.slotGroup) });
-            return storages;
+            var zones = (Find.CurrentMap?.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>())
+                .Select(z => new { name = z.label, items = (object)z.slotGroup.HeldThings.Select(t => convert_thing(t, new { stack_count = t.stackCount })) });
+            var buildings = (Find.CurrentMap?.listerBuildings?.allBuildingsColonist?.OfType<Building_Storage>() ?? Enumerable.Empty<Building_Storage>())
+                .Select(b => new { name = b.LabelCap, items = (object)CountThings(b.slotGroup) });
+            return zones.Concat(buildings);
         }
 
         public object storage() {
-            var storages = new List<object>();
-            foreach (var zone in Find.CurrentMap.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>())
-                storages.Add(new { name = zone.label, items = CountThings(zone?.slotGroup) });
-            foreach (var building in Find.CurrentMap.listerBuildings?.allBuildingsColonist?.OfType<Building_Storage>() ?? Enumerable.Empty<Building_Storage>())
-                storages.Add(new { name = building.LabelCap, items = CountThings(building?.slotGroup) });
-            return storages;
+            var zones = (Find.CurrentMap?.zoneManager?.AllZones?.OfType<Zone_Stockpile>() ?? Enumerable.Empty<Zone_Stockpile>())
+                .Select(z => new { name = z.label, items = CountThings(z.slotGroup) });
+            var buildings = (Find.CurrentMap?.listerBuildings?.allBuildingsColonist?.OfType<Building_Storage>() ?? Enumerable.Empty<Building_Storage>())
+                .Select(b => new { name = b.LabelCap, items = CountThings(b.slotGroup) });
+            return zones.Concat(buildings);
         }
 
-        public object mods() => LoadedModManager.RunningModsListForReading.Select(m => new { name = m.Name, packageId = m.PackageId });
+        public object mods() {
+            return LoadedModManager.RunningModsListForReading.Select(m => new { name = m.Name, packageId = m.PackageId });
+        }
 
         public object factions() {
             if (Current.ProgramState != ProgramState.Playing || Find.FactionManager == null) return new List<object>();
             return Find.FactionManager.AllFactionsListForReading.Select(f => new {
-                name = f.Name, def = f.def?.defName, is_player = f.IsPlayer,
+                name = f.Name,
+                def = f.def,
+                is_player = f.IsPlayer,
                 relation = f.IsPlayer ? "" : (Find.FactionManager?.OfPlayer != null ? Find.FactionManager.OfPlayer.RelationKindWith(f).ToString() : ""),
                 goodwill = f.IsPlayer ? 0 : (Find.FactionManager?.OfPlayer?.GoodwillWith(f) ?? 0),
-            }).ToList();
+            });
         }
 
         public object research() {
@@ -454,33 +423,30 @@ namespace RimworldAPI {
                 return new { currentProject = string.Empty, progress = 0f, finishedProjects = new List<string>() };
 
             var manager = Find.ResearchManager;
-            ResearchProjectDef current = manager != null ? (ResearchProjectDef)typeof(ResearchManager).GetField("currentProj", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(manager) : null;
+            ResearchProjectDef current = manager?.GetProject();
             return new {
                 currentProject = current?.defName ?? string.Empty,
                 progress = current != null ? manager.GetProgress(current) / current.baseCost : 0f,
-                finishedProjects = DefDatabase<ResearchProjectDef>.AllDefsListForReading.Where(p => p.IsFinished).Select(p => p.defName).ToList()
+                finishedProjects = DefDatabase<ResearchProjectDef>.AllDefsListForReading.Where(p => p.IsFinished)
             };
         }
 
-        public object buildings() => Find.CurrentMap.listerThings.AllThings.Where(t => t.def.building != null).Select(b => new {
-            id = b.thingIDNumber,
-            type = b.GetType().FullName,
-            def = b.def?.defName,
-            material = b.Stuff?.defName, // 新增：建筑的材料 (例如: "WoodLog", "Steel")。如果建筑没有自选材料则为 null
-            position = new { x = b.Position.x, y = b.Position.z },
-            rotation = b.Rotation.AsInt, // 新增：建筑的朝向 (0: 北, 1: 东, 2: 南, 3: 西)
-            is_forbidden = b.IsForbidden(Faction.OfPlayer),
-            faction = b.Faction?.ToString()
-        }).ToList();
+        public object buildings() {
+            return Find.CurrentMap.listerThings.AllThings.Where(t => t.def.building != null).Select(b => convert_thing(b, new {
+                material = b.Stuff, // 新增：建筑的材料 (例如: "WoodLog", "Steel")。如果建筑没有自选材料则为 null
+                rotation = b.Rotation.AsInt, // 新增：建筑的朝向 (0: 北, 1: 东, 2: 南, 3: 西)
+                is_forbidden = b.IsForbidden(Faction.OfPlayer),
+            }));
+        }
 
         public object map() {
             Map map = Find.CurrentMap;
             if (map == null) return new { };
             return new {
-                weather = map.weatherManager?.curWeather?.defName,
+                weather = map.weatherManager?.curWeather,
                 temperature = map.mapTemperature?.OutdoorTemp ?? 0f,
                 hour = GenLocalDate.HourOfDay(map),
-                size = new { x = map.Size.x, y = map.Size.z },
+                size = map.Size,
                 season = GenLocalDate.Season(map).ToString(),
                 total_ticks = Find.TickManager.TicksGame,
             };
@@ -488,36 +454,40 @@ namespace RimworldAPI {
 
         public object alerts() {
             if (Current.ProgramState != ProgramState.Playing) return new List<object>();
-            try
-            {
+            try {
                 var active = typeof(AlertsReadout).GetField("activeAlerts", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(Find.Alerts) as IEnumerable<Alert>;
-                return active?.Where(a => a.Active).Select(a => new { label = a.Label, priority = a.Priority.ToString() }).ToList();
+                return active?.Where(a => a.Active).Select(a => new { label = a.Label, priority = a.Priority.ToString() });
             }
             catch { return new List<object>(); }
         }
 
-        public object jobs() => (Find.CurrentMap?.mapPawns?.FreeColonists ?? Enumerable.Empty<Pawn>()).Select(p => new {
-            id = p.thingIDNumber, name = p.Name.ToStringShort, current = p.CurJob?.def?.defName, queue = p.jobs?.jobQueue?.Select(q => q.job?.def?.defName).ToList() ?? new List<string>()
-        }).ToList();
+        public object jobs() {
+            return (Find.CurrentMap?.mapPawns?.FreeColonists ?? Enumerable.Empty<Pawn>()).Select(p => new {
+                id = p.thingIDNumber,
+                name = p.Name.ToStringShort,
+                current = p.CurJob,
+                queue = p.jobs?.jobQueue?.Select(q => q.job)
+            });
+        }
 
         public object thing_def() {
-            return DefDatabase<ThingDef>.AllDefs.Select(i => i.defName);
+            return DefDatabase<ThingDef>.AllDefs;
         }
 
         public object recipe_def() {
-            return DefDatabase<RecipeDef>.AllDefs.Select(i => i.defName).ToList();
+            return DefDatabase<RecipeDef>.AllDefs;
         }
 
         public object bill_repeat_mode_def() {
-            return DefDatabase<BillRepeatModeDef>.AllDefs.Select(i => i.defName);
+            return DefDatabase<BillRepeatModeDef>.AllDefs;
         }
 
         public object thing_category_def() {
-            return DefDatabase<ThingCategoryDef>.AllDefs.Select(i => i.defName);
+            return DefDatabase<ThingCategoryDef>.AllDefs;
         }
 
         public object job_def() {
-            return DefDatabase<JobDef>.AllDefs.Select(i => i.defName);
+            return DefDatabase<JobDef>.AllDefs;
         }
 
         public string Ping() {
@@ -525,15 +495,19 @@ namespace RimworldAPI {
         }
         #endregion
     }
-    public static class Server
-    {
+
+    public static class Server {
         private static HttpListener _listener;
         private static int Port => RimworldAPI_Mod.Settings?.serverPort ?? 18765;
         private static readonly string Prefix = $"http://+:{Port}/";
         private static Thread _thread;
         private static readonly ApiHandler _apiHandler = new ApiHandler();
+        private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings {
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+            Converters = new List<JsonConverter> { new RimworldConverter() },
+            Formatting = Formatting.Indented
+        };
         public static readonly ConcurrentQueue<HttpListenerContext> MainThreadRequestQueue = new ConcurrentQueue<HttpListenerContext>();
-
 
         public static void Start() {
             if (_listener != null) return;
@@ -555,8 +529,7 @@ namespace RimworldAPI {
 
         private static async void Loop() {
             while (_listener != null && _listener.IsListening) {
-                try
-                {
+                try {
                     var ctx = await _listener.GetContextAsync();
                     假Handle(ctx);
                 }
@@ -571,67 +544,54 @@ namespace RimworldAPI {
         }
 
         public static void Handle(HttpListenerContext ctx) {
-            try
-            {
-                Monitor.Enter(ApiHandler.TickSyncLock);
-                string path = ctx.Request.Url.AbsolutePath.Trim('/').ToLowerInvariant();
-                string methodName = path;
-                string json;
+            try {
+                lock (ApiHandler.TickSyncLock) {
+                    string methodName = ctx.Request.Url.AbsolutePath.Trim('/').ToLowerInvariant();
+                    MethodInfo method = _apiHandler.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                    if (method == null) {
+                        WriteResponse(ctx, 404, "application/json", $"\"Method {methodName} not found.\"");
+                        return;
+                    }
 
-                var argsDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (string key in ctx.Request.QueryString.AllKeys) {
-                    if (key != null) argsDict[key] = ctx.Request.QueryString[key];
-                }
-                MethodInfo method = _apiHandler.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                if (method == null) {
-                    ctx.Response.StatusCode = 404;
-                    json = $"\"Method {methodName} not found.\"";
-                }
-                else {
                     var methodParams = method.GetParameters();
                     var args = new object[methodParams.Length];
                     for (int i = 0; i < methodParams.Length; i++) {
                         var param = methodParams[i];
-                        if (argsDict.TryGetValue(param.Name, out string paramValueStr)) {
-                            args[i] = Convert.ChangeType(paramValueStr, param.ParameterType);
+                        string val = ctx.Request.QueryString[param.Name];
+                        if (val != null) {
+                            args[i] = Convert.ChangeType(val, param.ParameterType);
                         }
                         else {
-                            if (!param.IsOptional) { ctx.Response.StatusCode = 400; throw new Exception($"Missing required parameter: {param.Name}"); }
+                            if (!param.IsOptional) {
+                                ctx.Response.StatusCode = 400;
+                                throw new Exception($"Missing required parameter: {param.Name}");
+                            }
                             args[i] = param.DefaultValue;
                         }
                     }
 
                     object result = method.Invoke(_apiHandler, args);
-                    if (method.ReturnType == typeof(void))
-                        json = "\"ok\"";
-                    else
-                        json = JsonConvert.SerializeObject(result, new JsonSerializerSettings {
-                                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                                Converters = new List<JsonConverter>(),
-                                Formatting = Formatting.Indented
-                            }
-                        );
+                    string json = method.ReturnType == typeof(void) ? "\"ok\"" : JsonConvert.SerializeObject(result, JsonSettings);
+                    WriteResponse(ctx, 200, "application/json", json);
                 }
-
-                byte[] data = Encoding.UTF8.GetBytes(json);
-                ctx.Response.ContentType = "application/json";
-                ctx.Response.ContentEncoding = Encoding.UTF8;
-                ctx.Response.ContentLength64 = data.Length;
-                ctx.Response.OutputStream.Write(data, 0, data.Length);
             }
             catch (Exception ex) {
+                int status = ctx.Response.StatusCode == 400 ? 400 : 500;
                 string msg = $"【error】: {ex.Message}\n【exceptionType】: {ex.GetType().Name}\n【stackTrace】: {ex.ToString()}";
-                byte[] data = Encoding.UTF8.GetBytes(msg);
-                ctx.Response.StatusCode = 500;
-                ctx.Response.ContentEncoding = Encoding.UTF8;
-                ctx.Response.ContentLength64 = data.Length;
-                ctx.Response.OutputStream.Write(data, 0, data.Length);
+                WriteResponse(ctx, status, null, msg);
             }
-            finally
-            {
-                Monitor.Exit(ApiHandler.TickSyncLock);
+            finally {
                 ctx.Response.OutputStream.Close();
             }
+        }
+
+        private static void WriteResponse(HttpListenerContext ctx, int statusCode, string contentType, string body) {
+            byte[] data = Encoding.UTF8.GetBytes(body);
+            ctx.Response.StatusCode = statusCode;
+            if (contentType != null) ctx.Response.ContentType = contentType;
+            ctx.Response.ContentEncoding = Encoding.UTF8;
+            ctx.Response.ContentLength64 = data.Length;
+            ctx.Response.OutputStream.Write(data, 0, data.Length);
         }
     }
 }
