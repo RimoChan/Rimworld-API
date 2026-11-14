@@ -533,7 +533,7 @@ namespace RimworldAPI {
     public static class Server {
         private static HttpListener _listener;
         private static int Port => RimworldAPI_Mod.Settings?.serverPort ?? 18765;
-        private static readonly string Prefix = $"http://+:{Port}/";
+        private static readonly string Prefix = $"http://127.0.0.1:{Port}/";
         private static Thread _thread;
         private static readonly ApiHandler _apiHandler = new ApiHandler();
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings {
